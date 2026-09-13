@@ -198,6 +198,12 @@ async def execute_sub_task(
                 if hasattr(event, 'content') and event.content:
                     is_partial = getattr(event, "partial", False)
                     for part in getattr(event.content, "parts", []) or []:
+                        # Reasoning/thinking parts (thought=True) carry the model's
+                        # internal deliberation (e.g. DeepSeek's "<think>" /
+                        # standalone "response" markers). They are NOT final answers;
+                        # printing them floods stdout with noise. Skip them.
+                        if getattr(part, "thought", False):
+                            continue
                         if hasattr(part, 'text') and part.text:
                             # In streaming mode, print partial chunks incrementally.
                             # Skip final aggregated non-partial text only if partial text was already streamed.
