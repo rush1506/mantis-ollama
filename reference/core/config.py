@@ -181,6 +181,8 @@ def is_rate_limit_error(e: Exception) -> bool:
 
 def is_retryable_llm_error(e: Exception) -> bool:
     """Detects whether an exception represents a retryable transient error (429, 408, 5xx, timeout, or network reset)."""
+    if isinstance(e, MantisEmptyTurnError):
+        return True
     if is_auth_error(e) or isinstance(e, (MantisAuthError, PermissionError, FileNotFoundError)):
         return False
     if is_rate_limit_error(e):
@@ -301,6 +303,17 @@ class MantisAuthError(RuntimeError):
 
 class MantisStreamingTruncationError(RuntimeError):
     """Raised when streaming tool call arguments are truncated mid-stream by output limits or premature chunk completion."""
+    pass
+
+
+class MantisEmptyTurnError(RuntimeError):
+    """Raised when a non-streaming LLM turn finishes with STOP but zero content parts.
+
+    ADK surfaces this case as ``MODEL_RETURNED_NO_CONTENT``, which otherwise becomes
+    a fatal event error that aborts the whole campaign. It is a transient model
+    (e.g. DeepSeek) artifact, so the resilience wrapper retries it like any other
+    retryable transient turn rather than failing the pipeline.
+    """
     pass
 
 
@@ -1149,6 +1162,34 @@ class ResilientLiteLlm(LiteLlm):
 
         return response
 
+    @staticmethod
+    def _is_empty_stop_turn(response: Any) -> bool:
+        """Returns True for a non-streaming turn that finished with STOP but zero content parts.
+
+        ADK treats this exact case (base_llm_flow `_postprocess_async`) as a fatal
+        ``MODEL_RETURNED_NO_CONTENT`` event error that otherwise aborts the campaign.
+        We detect it here, before ADK sees it, so the resilience wrapper can retry the
+        turn instead of failing the workflow. Function-call turns (legitimate content
+        in a different part type) are never flagged.
+        """
+        if getattr(response, "partial", False):
+            return False
+        from google.genai import types
+        if getattr(response, "finish_reason", None) not in (types.FinishReason.STOP, "STOP", "stop"):
+            return False
+        parts = getattr(getattr(response, "content", None), "parts", None)
+        if not parts:
+            return True
+        for part in parts:
+            if (
+                getattr(part, "text", None)
+                or getattr(part, "function_call", None) is not None
+                or getattr(part, "function_response", None) is not None
+                or getattr(part, "thought", None)
+            ):
+                return False
+        return True
+
     async def generate_content_async(
         self, llm_request: Any, stream: bool = False
     ) -> Any:
@@ -1182,6 +1223,13 @@ class ResilientLiteLlm(LiteLlm):
                         and "Tool call arguments were truncated" in str(getattr(response, "error_message", ""))
                     ):
                         raise MantisStreamingTruncationError(str(getattr(response, "error_message", "")))
+                    if not current_stream and self._is_empty_stop_turn(response):
+                        # A non-streaming turn that ends with STOP but no content is emitted
+                        # as a fatal MODEL_RETURNED_NO_CONTENT event by ADK's postprocess,
+                        # aborting the whole campaign. Retry the turn instead.
+                        raise MantisEmptyTurnError(
+                            "Model returned no content (finish_reason=STOP with empty parts). Retrying turn."
+                        )
                     yield self._sanitize_structured_response(response, schema_cls)
                 return
             except (json.decoder.JSONDecodeError, ValueError, MantisStreamingTruncationError) as e:

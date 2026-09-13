@@ -20,8 +20,8 @@ secure software in the new AI era of software development.
 ## Quick Start (Ollama Cloud — DeepSeek)
 
 The default model is **DeepSeek** (`ollama/deepseek-v4-flash:cloud`). This guide
-gets Mantis running against **Ollama Cloud** so you can use hosted DeepSeek models
-with no GPU and no local daemon. To run entirely locally instead, see
+gets Mantis running against **Ollama Cloud** so you can use hosted DeepSeek
+models with no GPU and no local daemon. To run entirely locally instead, see
 [Getting Started (Local)](#getting-started-local).
 
 ### 1. Prerequisites
@@ -97,7 +97,7 @@ set it on the command line or in `workflow.json`:
 > `https://ollama.com/v1`; a plain `ollama/<m>` (no `:cloud`) → your **local**
 > Ollama daemon (`http://localhost:11434/v1`), which needs a downloaded model.
 
----
+______________________________________________________________________
 
 ## Getting Started (Local)
 
@@ -126,7 +126,6 @@ python3 scripts/configure.py --test --probe
 # (Optional) Research Graph Synthesis for a Specific Objective
 ./run.sh path/to/code --objective "Audit for Server-Side Request Forgery and SSRF in webhook handlers"
 ```
-
 
 Mantis is roughly designed to:
 
