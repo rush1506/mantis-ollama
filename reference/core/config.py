@@ -693,6 +693,80 @@ except Exception:
     pass
 
 
+def _fold_native_ollama_reasoning(messages: Any, model: Any) -> Any:
+    """Preserves prior assistant reasoning across turns for the NATIVE Ollama provider.
+
+    ADK stores each assistant turn's thinking as a separate top-level
+    ``reasoning_content`` field on the outbound message. LiteLLM's native Ollama
+    completion provider (``ollama_pt`` — used for ``ollama/<m>`` and
+    ``ollama/<m>:cloud``, i.e. NOT the ``ollama_chat``/chat path which maps
+    ``reasoning_content`` -> a ``thinking`` field) only reads ``message['content']``
+    and therefore silently DROPS ``reasoning_content``. The model thus never sees
+    its own prior reasoning on turn 2+, losing reasoning context mid-loop, which is
+    the environment in which DeepSeek can emit empty STOP turns (MODEL_RETURNED_NO_CONTENT).
+
+    This folds each prior assistant ``reasoning_content`` into that message's
+    ``content`` using the same ``<thinking>...</thinking>`` delimiters the model
+    itself emits and that LiteLLM's ``_parse_content_for_reasoning`` recognises, so
+    the reasoning is carried forward. Input messages are shallow-copied; the caller's
+    list is never mutated.
+    """
+    model_str = str(model).strip()
+    # Only the native Ollama completion provider drops reasoning_content. The
+    # chat provider (custom_llm_provider=ollama_chat) handles it via a 'thinking'
+    # field, and openai/ollama.cloud/... rewrite to 'openai/' so they are untouched.
+    if not model_str.startswith("ollama/"):
+        return messages
+    if model_str.startswith("ollama.chat/") or "_chat" in model_str:
+        return messages
+
+    out: list = []
+    changed = False
+    for m in messages or []:
+        reasoning = _get_field(m, "reasoning_content")
+        content = _get_field(m, "content")
+        if not reasoning:
+            out.append(m)
+            continue
+
+        folded = f"<thinking>{reasoning}</thinking>{_content_to_string(content)}"
+        if isinstance(m, dict):
+            new_m = dict(m)
+            new_m["content"] = folded
+            out.append(new_m)
+        elif hasattr(m, "model_copy") and hasattr(m, "content"):
+            new_m = m.model_copy()
+            new_m.content = folded
+            out.append(new_m)
+        else:
+            out.append(m)
+        changed = True
+
+    return out if changed else messages
+
+
+def _get_field(message: Any, key: str) -> Any:
+    """Reads ``key`` from a LiteLLM Message or a plain dict outbound message."""
+    if isinstance(message, dict):
+        return message.get(key)
+    return getattr(message, key, None)
+
+
+def _content_to_string(content: Any) -> str:
+    """Serialises a LiteLLM content payload (str or list of text blocks) to str."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return ""
+
+
 class ResilientLiteLLMClient(LiteLLMClient):
     """LiteLLMClient with full jitter exponential backoff (min offset 5s, 1h patience) on 429/quota exhaustion."""
 
@@ -704,6 +778,7 @@ class ResilientLiteLLMClient(LiteLLMClient):
         **kwargs: Any,
     ) -> Any:
         import litellm
+        messages = _fold_native_ollama_reasoning(messages, model)
 
         max_patience = float(os.environ.get("MANTIS_LLM_MAX_PATIENCE_SECONDS", "3600.0"))
         initial_delay = float(os.environ.get("MANTIS_LLM_RETRY_INITIAL_DELAY", "5.0"))
@@ -774,6 +849,7 @@ class ResilientLiteLLMClient(LiteLLMClient):
         **kwargs: Any,
     ) -> Any:
         import litellm
+        messages = _fold_native_ollama_reasoning(messages, model)
 
         max_patience = float(os.environ.get("MANTIS_LLM_MAX_PATIENCE_SECONDS", "3600.0"))
         initial_delay = float(os.environ.get("MANTIS_LLM_RETRY_INITIAL_DELAY", "5.0"))
