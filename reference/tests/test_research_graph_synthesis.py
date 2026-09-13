@@ -81,7 +81,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
 
     def test_research_graph_synthesis_kernel(self):
         """Verifies synthesizer outputs a complete, valid WorkflowSpec for kernel archetype."""
-        synth = ResearchGraphSynthesizer(default_model="vertex_ai/gemini-3.7-flash")
+        synth = ResearchGraphSynthesizer(default_model="ollama/llama3")
         spec = synth.synthesize(
             objective="Linux kernel ioctl audit",
             budget_config=BudgetConfig(max_tokens=5_000_000, max_graph_steps=200),
@@ -466,7 +466,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
 
     def test_synthesized_research_graph_loads_cleanly(self):
         """Verifies synthesized recipes for kernel and web_api load into ADK graph without validation errors."""
-        synth = ResearchGraphSynthesizer(default_model="vertex_ai/gemini-3.7-flash")
+        synth = ResearchGraphSynthesizer(default_model="ollama/llama3")
         for obj in ["Linux kernel memory corruption", "Web REST API authentication"]:
             spec = synth.synthesize(objective=obj)
             recipe_path = ResearchGraphSynthesizer.persist_recipe(spec, self.workspace_dir)
@@ -506,7 +506,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
                     "id": "dedupe",
                     "type": "agent",
                     "skill": "mantis-dedupe",
-                    "model": "vertex_ai/gemini-3.5-flash-lite",
+                    "model": "ollama/deepseek-v4-flash",
                     "reasoning_effort": "medium",
                     "tools": ["get_findings", "dedupe_findings"],
                 },
@@ -524,7 +524,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
             ],
         }
 
-        synth = ResearchGraphSynthesizer(default_model="vertex_ai/gemini-3.7-flash")
+        synth = ResearchGraphSynthesizer(default_model="ollama/deepseek-v4-flash")
         spec = synth.sanitize_and_validate_spec(
             raw_dict=malicious_raw,
             objective="Security audit with untrusted model and api_base injection",
@@ -532,7 +532,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
 
         # 1. Global config verification
         self.assertIsNone(spec.config.api_base)
-        self.assertEqual(spec.config.default_model, "vertex_ai/gemini-3.7-flash")
+        self.assertEqual(spec.config.default_model, "ollama/deepseek-v4-flash")
 
         # 2. Malicious node verification (unauthorized model, api_base, and invalid reasoning_effort dropped)
         node_map = {n.id: n for n in spec.nodes}
@@ -544,7 +544,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
         # 3. Legitimate whitelisted node verification
         dedupe_node = node_map["dedupe"]
         self.assertIsNone(dedupe_node.api_base)
-        self.assertEqual(dedupe_node.model, "vertex_ai/gemini-3.5-flash-lite")
+        self.assertEqual(dedupe_node.model, "ollama/deepseek-v4-flash")
         self.assertEqual(dedupe_node.reasoning_effort, "medium")
 
 

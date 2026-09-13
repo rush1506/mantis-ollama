@@ -35,11 +35,10 @@ inside audited target repositories.
 - **CLI Options:**
   - `--sandbox` / `-s`: Sandbox mechanism (`static-only`, `gvisor`,
     `microsandbox`, `gce`).
-  - `--model` / `-m`: Default LLM model (e.g. `gemini-3.7-flash`,
-    `vertex_ai/claude-opus-5`, `vertex_ai/zai_org/glm-5.2-maas`,
-    `openai/{MODEL_ID}`).
+  - `--model` / `-m`: Default LLM model (e.g. `ollama/deepseek-v4-flash`,
+    `ollama/glm-5.3`, `openai/{MODEL_ID}`).
   - `--api-base`: Custom endpoint URL for OpenAI-compatible LLM servers (e.g.
-    `http://localhost:8000/v1`).
+    `http://localhost:11434/v1`, `https://ollama.com/v1`).
   - `--reasoning-effort`: Reasoning effort level (`low`, `medium`, `high`).
   - `--timeout`: LLM request timeout in seconds.
   - `--project` / `-p`: GCP Project ID (for GCE sandbox or Vertex AI routing).
@@ -78,17 +77,21 @@ inside audited target repositories.
 
 ## Supported Model Providers
 
-1. **Gemini Models (Google / Vertex AI)**:
-   - `gemini-3.7-flash`, `gemini-3.5-flash-lite`
-   - `vertex_ai/gemini-3.7-flash`, `vertex_ai/gemini-3.5-flash-lite`
-2. **Claude Models (Vertex AI Model Garden)**:
-   - `vertex_ai/claude-opus-5`
-3. **MaaS & Open Source Models (Vertex Model Garden)**:
-   - `vertex_ai/zai_org/glm-5.2-maas`
-4. **Custom OpenAI-Compatible Endpoints**:
-   - `openai/{MODEL_ID}` or `vertex_ai/openai/{MODEL_ID}`
-   - Supports custom `--api-base` (e.g. vLLM, Ollama, LiteLLM proxy),
-     `--reasoning-effort`, and `--timeout`.
+1. **Local Ollama (default)**:
+   - `ollama/deepseek-v4-flash`, `ollama/deepseek-v4.1-flash`, `ollama/glm-5.3`,
+     `ollama/glm-5.3-flash`, `ollama/minimax-m3`, `ollama/kimi-k3`,
+     `ollama/qwen3.5`
+   - Serviced by the local Ollama daemon via its OpenAI-compatible `/v1`
+     endpoint (default `http://localhost:11434/v1`).
+2. **Ollama Cloud (hosted, OpenAI-compatible)**:
+   - `ollama.cloud/{MODEL_ID}` (e.g. `ollama.cloud/llama3.3`)
+   - Resolves to `https://ollama.com/v1`.
+3. **Custom OpenAI-Compatible Endpoints**:
+   - `openai/{MODEL_ID}`
+   - Supports custom `--api-base` (e.g. vLLM, LM Studio, LiteLLM proxy, Ollama
+     Cloud), `--reasoning-effort`, and `--timeout`.
+4. **Direct Anthropic (optional)**:
+   - `anthropic/{MODEL_ID}` — only when `ANTHROPIC_API_KEY` is set.
 
 ## Common CLI Workflows
 
@@ -131,13 +134,16 @@ python3 "$MANTIS_HOME/reference/scripts/configure.py" --sandbox gvisor --image m
 python3 "$MANTIS_HOME/reference/scripts/configure.py" --sandbox gce --project my-gcp-project --zone us-central1-b
 ```
 
-### 6. Switch AI Model to Claude or Custom Endpoint
+### 6. Switch AI Model to Local Ollama or Custom Endpoint
+ (default)
+python3 "$MANTIS_HOME/reference/scripts/configure.py" --model ollama/deepseek-v4-flash
 
-```bash
-# Vertex AI Claude
-python3 "$MANTIS_HOME/reference/scripts/configure.py" --model vertex_ai/claude-opus-5
+# Ollama Cloud (hosted OpenAI-compatible)
+python3 "$MANTIS_HOME/reference/scripts/configure.py" --model ollama/glm-5.3 --api-base https://ollama.com/v1
+# Ollama Cloud (hosted OpenAI-compatible)
+python3 "$MANTIS_HOME/reference/scripts/configure.py" --model ollama.cloud/llama3.3
 
-# Custom Local vLLM / OpenAI server
+# Custom Local vLLM / OpenAI-compatible server
 python3 "$MANTIS_HOME/reference/scripts/configure.py" --model openai/my-model --api-base http://localhost:8000/v1
 ```
 

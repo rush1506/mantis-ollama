@@ -456,7 +456,7 @@ async def pipeline(
     compaction_config = None
     use_compaction = config.get("enable_compaction", True) if enable_compaction is None else enable_compaction
     if use_compaction:
-        comp_model_id = config.get("compaction_model") or config.get("default_model") or "vertex_ai/gemini-3.5-flash-lite"
+        comp_model_id = config.get("compaction_model") or config.get("default_model") or "ollama/deepseek-v4-flash"
         comp_llm = ResilientLiteLlm(model=comp_model_id)
         compaction_config = EventsCompactionConfig(
             token_threshold=int(config.get("compaction_token_threshold", 500000)),

@@ -1821,25 +1821,20 @@ class TestMantisReferenceSuite(unittest.IsolatedAsyncioTestCase):
 
     def test_get_llm_kwargs_resolution_and_precedence(self):
         """Tests LLM resolution precedence for model_id and api_base across all tiers."""
-        # 1. Defaults
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "proj-1", "VERTEXAI_LOCATION": "loc-1"}, clear=True):
+        # 1. Defaults (ollama local daemon)
+        with patch.dict(os.environ, {}, clear=True):
             mid, kwargs = get_llm_kwargs()
             self.assertEqual(mid, DEFAULT_MODEL)
             self.assertEqual(kwargs["model"], DEFAULT_MODEL)
-            self.assertEqual(kwargs["vertex_project"], "proj-1")
-            self.assertEqual(kwargs["vertex_location"], "loc-1")
-            self.assertNotIn("api_base", kwargs)
-
-        # 1b. Default location falls back to global
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "proj-1"}, clear=True):
-            mid, kwargs = get_llm_kwargs()
-            self.assertEqual(kwargs["vertex_location"], "global")
+            self.assertEqual(kwargs["api_base"], "http://localhost:11434/v1")
+            self.assertNotIn("vertex_project", kwargs)
 
         # 2. MODEL_ID environment variable
-        with patch.dict(os.environ, {"MODEL_ID": "openai/gpt-4o", "VERTEXAI_PROJECT": "proj-1"}, clear=True):
+        with patch.dict(os.environ, {"MODEL_ID": "openai/gpt-4o"}, clear=True):
             mid, kwargs = get_llm_kwargs()
             self.assertEqual(mid, "openai/gpt-4o")
             self.assertEqual(kwargs["model"], "openai/gpt-4o")
+            # Generic openai/ with no api_base configured -> no api_base key
             self.assertNotIn("api_base", kwargs)
 
         # 3. Explicit node model_id overrides MODEL_ID env and default
@@ -2784,27 +2779,27 @@ class TestMantisReferenceSuite(unittest.IsolatedAsyncioTestCase):
         # Test get_llm_kwargs directly with global and node overrides
         model_id, kwargs_default = get_llm_kwargs(
             model_id=None,
-            default_model="vertex_ai/gemini-3.7-flash",
+            default_model="ollama/llama3",
             default_reasoning_effort="medium",
         )
-        self.assertEqual(model_id, "vertex_ai/gemini-3.7-flash")
+        self.assertEqual(model_id, "ollama/llama3")
         self.assertEqual(kwargs_default.get("reasoning_effort"), "medium")
 
         # Test node override
         model_id_node, kwargs_node = get_llm_kwargs(
-            model_id="vertex_ai/gemini-3.5-flash-lite",
-            default_model="vertex_ai/gemini-3.7-flash",
+            model_id="ollama/llama3",
+            default_model="ollama/llama3",
             reasoning_effort="low",
             default_reasoning_effort="medium",
         )
-        self.assertEqual(model_id_node, "vertex_ai/gemini-3.5-flash-lite")
+        self.assertEqual(model_id_node, "ollama/llama3")
         self.assertEqual(kwargs_node.get("reasoning_effort"), "low")
 
         # Test loading workflow.json and verifying DAG compilation
         wf_path = os.path.join(os.path.dirname(__file__), "workflow.json")
         wf, wf_config = load_workflow_from_json(wf_path, load_local=False)
         self.assertIsNotNone(wf)
-        self.assertEqual(wf_config.get("default_model"), "vertex_ai/gemini-3.7-flash")
+        self.assertEqual(wf_config.get("default_model"), "ollama/deepseek-v4-flash")
         self.assertEqual(wf_config.get("reasoning_effort"), "medium")
         self.assertEqual(wf_config.get("on_enter_status", {}).get("reproducer"), "static_confirmed")
         self.assertEqual(wf_config.get("on_enter_status", {}).get("patcher"), "dynamic_confirmed")
@@ -3516,7 +3511,7 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
             "name": "test_pipeline",
             "config": {
                 "db_path": "test_knowledge.db",
-                "default_model": "vertex_ai/gemini-3.7-flash",
+                "default_model": "ollama/llama3",
                 "sandbox": {
                     "type": "gce",
                     "options": {
@@ -3660,7 +3655,7 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
 
         # Base workflow.json on disk remains unchanged
         base_raw = load_workflow_dict(self.sample_wf_path, load_local=False)
-        self.assertEqual(base_raw["config"]["default_model"], "vertex_ai/gemini-3.7-flash")
+        self.assertEqual(base_raw["config"]["default_model"], "ollama/llama3")
 
         # Merged load reflects overlay
         reloaded = load_workflow_dict(self.sample_wf_path, load_local=True)
@@ -3717,30 +3712,30 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
 
         # 1. Static sandbox passes preflight instantly
         cfg_static = {
-            "default_model": "vertex_ai/gemini-3.7-flash",
+            "default_model": "ollama/llama3",
             "sandbox": {"type": "static-only"}
         }
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "test-project"}):
+        with patch.dict(os.environ, {}, clear=True):
             ok, msgs = run_preflight_checks(cfg_static)
             self.assertTrue(ok)
             self.assertTrue(any("PASSED" in m for m in msgs))
 
         # 2. GCE sandbox with placeholder project fails preflight
         cfg_gce_bad = {
-            "default_model": "vertex_ai/gemini-3.7-flash",
+            "default_model": "ollama/llama3",
             "sandbox": {"type": "gce", "options": {"project": "YOUR_PROJECT_ID"}}
         }
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "test-project"}):
+        with patch.dict(os.environ, {}, clear=True):
             ok, msgs = run_preflight_checks(cfg_gce_bad)
             self.assertFalse(ok)
             self.assertTrue(any("placeholder" in m.lower() for m in msgs))
 
         # 3. GCE sandbox with valid credentials tests softened preflight message
         cfg_gce_good = {
-            "default_model": "vertex_ai/gemini-3.7-flash",
+            "default_model": "ollama/llama3",
             "sandbox": {"type": "gce", "options": {"project": "my-gce-project"}}
         }
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "my-gce-project"}):
+        with patch.dict(os.environ, {}, clear=True):
             with patch("shutil.which", return_value="/usr/bin/gcloud"):
                 with patch("subprocess.run") as mock_sub:
                     mock_sub.return_value = MagicMock(returncode=0, stdout="active-user@google.com\n")
@@ -3774,27 +3769,27 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
         ok, msgs = run_preflight_checks(cfg_openai)
         self.assertTrue(ok)
 
-        # 7. Vertex AI OpenAI model passes preflight with api_base or project
-        cfg_vertex_openai = {
-            "default_model": "vertex_ai/openai/custom-model",
-            "api_base": "http://localhost:8000/v1",
+        # 7. OpenAI-compatible model via Ollama Cloud base passes preflight
+        cfg_ollama_cloud = {
+            "default_model": "ollama.cloud/llama3.3",
             "sandbox": {"type": "static-only"}
         }
-        ok, msgs = run_preflight_checks(cfg_vertex_openai)
-        self.assertTrue(ok)
+        with patch.dict(os.environ, {}, clear=True):
+            ok, msgs = run_preflight_checks(cfg_ollama_cloud)
+            self.assertTrue(ok)
 
-        # 8. GLM 5.2 MaaS model with Vertex AI project passes preflight
-        cfg_glm = {
-            "default_model": "vertex_ai/zai_org/glm-5.2-maas",
+        # 8. Local Ollama model passes preflight
+        cfg_ollama = {
+            "default_model": "ollama/llama3",
             "sandbox": {"type": "static-only"}
         }
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "test-project"}):
-            ok, msgs = run_preflight_checks(cfg_glm)
+        with patch.dict(os.environ, {}, clear=True):
+            ok, msgs = run_preflight_checks(cfg_ollama)
             self.assertTrue(ok)
 
         # 9. Async preflight checks execution
         async def _test_async():
-            with patch.dict(os.environ, {"VERTEXAI_PROJECT": "test-project"}):
+            with patch.dict(os.environ, {}, clear=True):
                 a_ok, a_msgs = await run_preflight_checks_async(cfg_static)
                 self.assertTrue(a_ok)
                 # Safe sync wrapper inside event loop does not raise RuntimeError
@@ -3927,82 +3922,86 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
     def test_llm_project_resolution_fallback(self):
         from core.config import get_llm_kwargs
 
-        # When env vars are cleared, get_llm_kwargs falls back to config project or sandbox project
+        # When env vars are cleared, get_llm_kwargs falls back to config api_base
         with patch.dict(os.environ, {}, clear=True):
-            # 1. Fallback to config["project"]
+            # 1. Fallback to config["api_base"]
             m, kwargs = get_llm_kwargs(
-                model_id="vertex_ai/gemini-3.7-flash",
-                config={"project": "fallback-project-alpha"}
+                model_id="openai/llama3.3",
+                config={"api_base": "http://config-api-base:9000/v1"}
             )
-            self.assertEqual(kwargs.get("vertex_project"), "fallback-project-alpha")
+            self.assertEqual(kwargs.get("api_base"), "http://config-api-base:9000/v1")
 
-            # 2. Fallback to config["sandbox"]["options"]["project"]
+            # 2. Fallback to config["config"]["api_base"]
             m, kwargs = get_llm_kwargs(
-                model_id="vertex_ai/gemini-3.7-flash",
-                config={"sandbox": {"options": {"project": "fallback-sb-project"}}}
+                model_id="openai/llama3.3",
+                config={"config": {"api_base": "http://config-nested-api-base:9100/v1"}}
             )
-            self.assertEqual(kwargs.get("vertex_project"), "fallback-sb-project")
+            self.assertEqual(kwargs.get("api_base"), "http://config-nested-api-base:9100/v1")
 
-            # 3. Placeholder in config is ignored
-            with patch("google.auth.default", side_effect=Exception("No credentials")):
-                with self.assertRaises(ValueError):
-                    get_llm_kwargs(
-                        model_id="vertex_ai/gemini-3.7-flash",
-                        config={"sandbox": {"options": {"project": "YOUR_PROJECT_ID"}}}
-                    )
+            # 3. Placeholder api_base in config is ignored
+            m, kwargs = get_llm_kwargs(
+                model_id="ollama/llama3",
+                config={"api_base": "YOUR_API_BASE"}
+            )
+            self.assertNotEqual(kwargs.get("api_base"), "YOUR_API_BASE")
+            # Placeholder ignored, falls through to local ollama daemon default
+            self.assertEqual(kwargs.get("api_base"), "http://localhost:11434/v1")
 
-            # 4. Placeholder in env var is ignored and falls back to config
-            with patch.dict(os.environ, {"VERTEXAI_PROJECT": "YOUR_PROJECT_ID", "GOOGLE_CLOUD_PROJECT": ""}):
-                m, kwargs = get_llm_kwargs(
-                    model_id="vertex_ai/gemini-3.7-flash",
-                    config={"project": "fallback-after-env-placeholder"}
-                )
-                self.assertEqual(kwargs.get("vertex_project"), "fallback-after-env-placeholder")
+            # 4. config["sandbox"]["options"]["api_base"] used as fallback
+            m, kwargs = get_llm_kwargs(
+                model_id="openai/llama3.3",
+                config={"sandbox": {"options": {"api_base": "http://sandbox-api-base:9200/v1"}}}
+            )
+            self.assertEqual(kwargs.get("api_base"), "http://sandbox-api-base:9200/v1")
 
     def test_model_catalog_configuration(self):
         from core.config import RECOMMENDED_MODELS, DEFAULT_MODEL
 
         # 1. Check RECOMMENDED_MODELS and DEFAULT_MODEL catalog
-        self.assertIn("vertex_ai/claude-opus-5", RECOMMENDED_MODELS)
-        self.assertNotIn("anthropic/claude-opus-5", RECOMMENDED_MODELS)
-        self.assertIn("vertex_ai/zai_org/glm-5.2-maas", RECOMMENDED_MODELS)
-        self.assertEqual(DEFAULT_MODEL, "vertex_ai/gemini-3.7-flash")
+        self.assertIn("ollama/deepseek-v4-flash", RECOMMENDED_MODELS)
+        self.assertIn("ollama/deepseek-v4.1-flash", RECOMMENDED_MODELS)
+        self.assertIn("ollama/glm-5.3", RECOMMENDED_MODELS)
+        self.assertIn("ollama/glm-5.3-flash", RECOMMENDED_MODELS)
+        self.assertIn("ollama/qwen3.5", RECOMMENDED_MODELS)
+        self.assertEqual(DEFAULT_MODEL, "ollama/deepseek-v4-flash")
 
     def test_model_normalization_and_routing(self):
         from core.config import normalize_model_id, get_llm_kwargs
 
-        # Bare gemini model routes to vertex_ai when GCP env is set
-        with patch.dict(os.environ, {"GOOGLE_CLOUD_PROJECT": "proj-123", "GEMINI_API_KEY": ""}):
-            normalized = normalize_model_id("gemini-3.7-flash")
-            self.assertEqual(normalized, "vertex_ai/gemini-3.7-flash")
+        # Bare ollama model stays ollama-prefixed and gets the local daemon api_base
+        normalized = normalize_model_id("deepseek-v4-flash")
+        self.assertEqual(normalized, "ollama/deepseek-v4-flash")
+        with patch.dict(os.environ, {}, clear=True):
+            _, kwargs = get_llm_kwargs(model_id="deepseek-v4-flash")
+            self.assertEqual(kwargs["model"], "ollama/deepseek-v4-flash")
+            self.assertEqual(kwargs["api_base"], "http://localhost:11434/v1")
 
         # Global model override takes precedence
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "proj-123"}):
+        with patch.dict(os.environ, {}, clear=True):
             model_id, kwargs = get_llm_kwargs(
-                model_id="vertex_ai/gemini-3.5-flash-lite",
-                global_model_override="vertex_ai/claude-opus-5",
+                model_id="ollama/llama3",
+                global_model_override="openai/custom-vllm",
             )
-            self.assertEqual(model_id, "vertex_ai/claude-opus-5")
-            self.assertEqual(kwargs["vertex_project"], "proj-123")
+            self.assertEqual(model_id, "openai/custom-vllm")
 
         # MANTIS_MODEL env var overrides node model
-        with patch.dict(os.environ, {"MANTIS_MODEL": "openai/custom-vllm", "LLM_API_BASE": "http://localhost:8000/v1"}):
-            model_id, kwargs = get_llm_kwargs(model_id="vertex_ai/gemini-3.7-flash")
+        with patch.dict(os.environ, {"MANTIS_MODEL": "openai/custom-vllm", "LLM_API_BASE": "http://localhost:8000/v1"}, clear=True):
+            model_id, kwargs = get_llm_kwargs(model_id="ollama/llama3")
             self.assertEqual(model_id, "openai/custom-vllm")
             self.assertEqual(kwargs["api_base"], "http://localhost:8000/v1")
 
-        # vertex_ai/zai_org/glm-5.2-maas routing to OpenAPI endpoint
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "proj-123"}):
-            model_id, kwargs = get_llm_kwargs(model_id="vertex_ai/zai_org/glm-5.2-maas")
-            self.assertEqual(model_id, "vertex_ai/openai/zai-org/glm-5.2-maas")
-            self.assertEqual(kwargs["vertex_project"], "proj-123")
+        # ollama.cloud/{model} routes to Ollama Cloud OpenAI-compatible endpoint
+        with patch.dict(os.environ, {}, clear=True):
+            model_id, kwargs = get_llm_kwargs(model_id="ollama.cloud/llama3.3")
+            self.assertEqual(model_id, "openai/llama3.3")
+            self.assertEqual(kwargs["api_base"], "https://ollama.com/v1")
 
-        # vertex_ai/openai/{MODEL_ID} with api_base
+        # openai/{MODEL_ID} with api_base
         model_id, kwargs = get_llm_kwargs(
-            model_id="vertex_ai/openai/my-model",
+            model_id="openai/my-model",
             api_base="http://localhost:8000/v1",
         )
-        self.assertEqual(model_id, "vertex_ai/openai/my-model")
+        self.assertEqual(model_id, "openai/my-model")
         self.assertEqual(kwargs["api_base"], "http://localhost:8000/v1")
 
     def test_graph_loader_runtime_overrides(self):
@@ -4042,12 +4041,12 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
         with open(self.sample_wf_path, "w") as f:
             json.dump({
                 "name": "launch_workflow",
-                "config": {"default_model": "vertex_ai/gemini-3.7-flash", "sandbox": {"type": "static-only"}},
+                "config": {"default_model": "ollama/llama3", "sandbox": {"type": "static-only"}},
                 "nodes": [{"id": "test_agent", "type": "agent", "system_prompt": "prompt.md"}],
                 "edges": [{"from": "START", "to": "test_agent"}]
             }, f)
 
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "proj-123"}):
+        with patch.dict(os.environ, {}, clear=True):
             rc = run_launch(
                 target=os.path.join(self.temp_dir, "prompt.md"),
                 workflow_path=self.sample_wf_path,
@@ -4069,7 +4068,7 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
             json.dump({
                 "name": "launch_unconf_workflow",
                 "config": {
-                    "default_model": "vertex_ai/gemini-3.7-flash",
+                    "default_model": "ollama/llama3",
                     "sandbox": {"type": "gce", "options": {"project": "YOUR_PROJECT_ID"}}
                 },
                 "nodes": [{"id": "test_agent", "type": "agent", "system_prompt": "prompt.md"}],
@@ -4094,7 +4093,7 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(rc, 0)
 
         # 5. Launch with live probe flag enabled
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "proj-123"}):
+        with patch.dict(os.environ, {}, clear=True):
             with patch("scripts.configure._probe_llm_reachability", return_value=(True, "LLM reachability verified.")):
                 rc = run_launch(
                     target=os.path.join(self.temp_dir, "prompt.md"),
@@ -4142,10 +4141,10 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
 
         # 3. Preflight probe integration (probe=True vs probe=False)
         cfg = {
-            "default_model": "vertex_ai/gemini-3.7-flash",
+            "default_model": "ollama/llama3",
             "sandbox": {"type": "static-only"},
         }
-        with patch.dict(os.environ, {"VERTEXAI_PROJECT": "test-project"}):
+        with patch.dict(os.environ, {}, clear=True):
             # Static check only (probe=False) does not call completion
             with patch("litellm.completion") as mock_comp:
                 ok, msg = _check_llm_preflight(cfg, probe=False)
@@ -4339,14 +4338,6 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
             ResilientLiteLLMClient,
             ResilientLiteLlm,
         )
-
-        # 1. Verify reauth popup suppression
-        import google.oauth2.reauth
-        self.assertFalse(google.oauth2.reauth.is_interactive())
-
-        import google.oauth2.credentials
-        creds = google.oauth2.credentials.Credentials(token="fake-token")
-        self.assertFalse(creds._enable_reauth_refresh)
 
         # 2. Verify is_auth_error detection
         refresh_err = google.auth.exceptions.RefreshError(

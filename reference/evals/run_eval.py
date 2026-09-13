@@ -18,16 +18,16 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 DEFAULT_MODELS = [
-    ("vertex_ai/gemini-3.1-flash-lite", "low"),
-    ("vertex_ai/gemini-3.1-flash-lite", "high"),
-    ("vertex_ai/gemini-3.5-flash-lite", "low"),
-    ("vertex_ai/gemini-3.5-flash-lite", "high"),
-    ("vertex_ai/gemini-3.5-flash", "low"),
-    ("vertex_ai/gemini-3.5-flash", "high"),
-    ("vertex_ai/gemini-3.6-flash", "low"),
-    ("vertex_ai/gemini-3.6-flash", "high"),
-    ("vertex_ai/gemini-3.7-flash", "low"),
-    ("vertex_ai/gemini-3.7-flash", "high"),
+    ("ollama/deepseek-v4-flash", "low"),
+    ("ollama/deepseek-v4-flash", "high"),
+    ("ollama/deepseek-v4.1-flash", "low"),
+    ("ollama/deepseek-v4.1-flash", "high"),
+    ("ollama/glm-5.3", "low"),
+    ("ollama/glm-5.3", "high"),
+    ("ollama/glm-5.3-flash", "low"),
+    ("ollama/glm-5.3-flash", "high"),
+    ("ollama/qwen3.5", "low"),
+    ("ollama/qwen3.5", "high"),
 ]
 
 def score_dedup_partition(db_findings: List[Dict[str, Any]], ground_truth: Dict[str, Any]) -> Dict[str, Any]:

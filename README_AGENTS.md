@@ -56,8 +56,11 @@ CLI, Google ADK, and other coding agent frameworks. Consider:
    }
    ```
 
-3. **Cloud SDKs**: If running remote cloud sandboxes (e.g. Google Compute
-   Engine) instead of local containers.
+3. **Ollama / OpenAI-compatible endpoint**: For running local or hosted LLMs.
+   Start a local Ollama daemon (`ollama serve`, then `ollama pull deepseek-v4-flash`) or
+   point `LLM_API_BASE` at any OpenAI-compatible server (e.g. Ollama Cloud,
+   `https://ollama.com/v1`). No cloud SDK or account credentials are required
+   for the default local-Ollama path.
 
 To install the skills via CLI:
 

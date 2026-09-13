@@ -331,6 +331,13 @@ def is_default_or_unconfigured(config: dict) -> Tuple[bool, List[str]]:
                 issues.append(
                     f"Vertex AI Model '{model}' requires VERTEXAI_PROJECT / GOOGLE_CLOUD_PROJECT or active gcloud project."
                 )
+    elif str(model).startswith("openai/"):
+        # OpenAI-compatible model: require an api_base or OPENAI_API_KEY (or fall back to Ollama/local default)
+        if not config.get("api_base") and not os.environ.get("LLM_API_BASE") and not os.environ.get("OPENAI_API_KEY"):
+            issues.append(
+                f"OpenAI-compatible Model '{model}' requires an api_base, LLM_API_BASE, or OPENAI_API_KEY. "
+                f"(e.g. point LLM_API_BASE=https://ollama.com/v1 for Ollama Cloud.)"
+            )
 
     return bool(issues), issues
 
@@ -525,11 +532,19 @@ def _check_llm_preflight(config: dict, probe: bool = False) -> Tuple[bool, str]:
             return False, "Anthropic model requires ANTHROPIC_API_KEY environment variable."
         static_msg = f"Anthropic LLM configured (Model: {resolved_model})."
 
-    elif resolved_model.startswith("openai/") or api_base:
-        if not os.environ.get("OPENAI_API_KEY") and not api_base:
-            return False, "OpenAI model requires OPENAI_API_KEY or --api-base endpoint."
-        endpoint_info = f" @ {api_base}" if api_base else ""
-        static_msg = f"OpenAI-compatible LLM configured (Model: {resolved_model}{endpoint_info})."
+    elif resolved_model.startswith("openai/") or (resolved_model.startswith("ollama/") or api_base):
+        resolved_base = kwargs.get("api_base")  # api_base resolved by get_llm_kwargs
+        if resolved_model.startswith("ollama/"):
+            endpoint_info = f" @ {resolved_base}" if resolved_base else ""
+            static_msg = f"Ollama LLM configured (Model: {resolved_model}{endpoint_info})."
+        elif resolved_model.startswith("openai/"):
+            if not os.environ.get("OPENAI_API_KEY") and not api_base and not resolved_base:
+                return False, "OpenAI model requires OPENAI_API_KEY, api_base, or a resolved OpenAI-compatible endpoint."
+            endpoint_info = f" @ {api_base or resolved_base}" if (api_base or resolved_base) else ""
+            static_msg = f"OpenAI-compatible LLM configured (Model: {resolved_model}{endpoint_info})."
+        elif api_base:
+            endpoint_info = f" @ {api_base}" if api_base else ""
+            static_msg = f"LLM configured (Model: {resolved_model}{endpoint_info})."
 
     elif resolved_model.startswith("gemini-"):
         if not os.environ.get("GEMINI_API_KEY") and not os.environ.get("GOOGLE_API_KEY"):
@@ -933,11 +948,12 @@ def run_interactive_wizard(workflow_path: str) -> dict:
     # 2. Select Model
     print("\nStep 2: Select AI Model")
     model_choices = [
-        ("vertex_ai/gemini-3.7-flash", "Gemini 3.7 Flash via Vertex AI (Recommended)"),
-        ("vertex_ai/gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite via Vertex AI (Fast & Low Cost)"),
-        ("vertex_ai/claude-opus-5", "Claude Opus 5 via Vertex AI Model Garden"),
-        ("vertex_ai/zai_org/glm-5.2-maas", "GLM 5.2 via Vertex AI Model Garden"),
-        ("custom_openai", "Custom OpenAI-compatible endpoint (vLLM / Ollama / Proxy)"),
+        ("ollama/deepseek-v4-flash", "DeepSeek V4 Flash via local Ollama (Recommended)"),
+        ("ollama/deepseek-v4.1-flash", "DeepSeek V4.1 Flash via local Ollama"),
+        ("ollama/glm-5.3", "GLM 5.3 via local Ollama"),
+        ("ollama/glm-5.3-flash", "GLM 5.3 Flash via local Ollama"),
+        ("ollama/qwen3.5", "Qwen 3.5 via local Ollama"),
+        ("custom_openai", "Custom OpenAI-compatible endpoint (vLLM / LM Studio / Ollama Cloud)"),
     ]
     for i, (k, desc) in enumerate(model_choices, 1):
         print(f"  {i}. {k:32} - {desc}")
@@ -1059,7 +1075,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         "-m",
         type=str,
-        help="Default LLM model (e.g. gemini-3.7-flash, vertex_ai/claude-opus-5, openai/my-model)",
+        help="Default LLM model (e.g. ollama/deepseek-v4-flash, ollama/glm-5.3, openai/my-model)",
     )
     parser.add_argument("--api-base", type=str, help="Custom LLM API Base URL")
     parser.add_argument(

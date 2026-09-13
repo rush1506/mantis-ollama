@@ -43,11 +43,10 @@ target repositories.
     a root repository directory (e.g. `.` or `/path/to/repo`).
   - `--sandbox` / `-s`: Override sandbox mechanism (`static-only`, `gvisor`,
     `microsandbox`, `gce`).
-  - `--model` / `-m`: Override AI model (e.g. `gemini-3.7-flash`,
-    `vertex_ai/claude-opus-5`, `vertex_ai/zai_org/glm-5.2-maas`,
-    `openai/{MODEL_ID}`).
+  - `--model` / `-m`: Override AI model (e.g. `ollama/deepseek-v4-flash`,
+    `ollama/glm-5.3`, `openai/{MODEL_ID}`).
   - `--api-base`: Custom endpoint URL for OpenAI-compatible LLM deployments
-    (e.g. `http://localhost:8000/v1`).
+    (e.g. `http://localhost:11434/v1`, `https://ollama.com/v1`).
   - `--reasoning-effort`: Reasoning effort level (`low`, `medium`, `high`).
   - `--timeout`: LLM request timeout in seconds.
   - `--db` / `-d`: Custom path to SQLite knowledge database (default:
@@ -95,13 +94,16 @@ Before starting a security campaign, `mantis-launch`:
 "$MANTIS_HOME/reference/run.sh" . --sandbox static-only
 ```
 
-### 3. Launch with Specific Model (e.g. Claude or Custom OpenAI Server)
+### 3. Launch with Specific Model (Local Ollama or Custom OpenAI Server)
 
 ```bash
-# Vertex AI Claude
-"$MANTIS_HOME/reference/run.sh" . --model vertex_ai/claude-opus-5
+# Local Ollama (default)
+"$MANTIS_HOME/reference/run.sh" . --model ollama/deepseek-v4-flash
 
-# Local vLLM / Ollama server
+# Ollama Cloud (hosted OpenAI-compatible)
+"$MANTIS_HOME/reference/run.sh" . --model ollama/glm-5.3 --api-base https://ollama.com/v1
+
+# Local vLLM / OpenAI-compatible server
 "$MANTIS_HOME/reference/run.sh" . --model openai/custom-model --api-base http://localhost:8000/v1
 ```
 

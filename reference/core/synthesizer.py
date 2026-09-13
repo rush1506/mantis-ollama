@@ -37,7 +37,7 @@ from tools import TOOLS
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SYNTHESIZER_MODEL = "vertex_ai/gemini-3.7-flash"
+DEFAULT_SYNTHESIZER_MODEL = "ollama/deepseek-v4-flash"
 VALID_TOOLS: Set[str] = set(TOOLS.keys())
 
 KNOWN_SKILLS: Set[str] = {
@@ -87,7 +87,7 @@ A valid workflow JSON has the following top-level structure:
   "name": "workflow_<domain_slug>",
   "config": {
     "db_path": "knowledge.db",
-    "default_model": "vertex_ai/gemini-3.7-flash",
+    "default_model": "ollama/deepseek-v4-flash",
     "sandbox": {"type": "static-only | gvisor | microsandbox | gce"}
   },
   "nodes": [ ... ],

@@ -16,86 +16,6 @@ try:
     import litellm
     litellm.drop_params = True
     litellm.suppress_debug_info = True
-
-    # Suppress interactive reauth popups (e.g. macOS Touch ID / WebAuthn prompts)
-    # when ADC credentials require reauthentication.
-    try:
-        import google.oauth2.reauth
-        google.oauth2.reauth.is_interactive = lambda: False
-    except Exception:
-        pass
-
-    try:
-        import google.oauth2.credentials
-        _orig_creds_init = google.oauth2.credentials.Credentials.__init__
-
-        def _non_interactive_creds_init(self, *args, **kwargs):
-            kwargs["enable_reauth_refresh"] = False
-            _orig_creds_init(self, *args, **kwargs)
-            self._enable_reauth_refresh = False
-
-        google.oauth2.credentials.Credentials.__init__ = _non_interactive_creds_init
-    except Exception:
-        pass
-
-    # Patch VertexAIAnthropicConfig to properly support adaptive thinking models (Claude 4.6+)
-    # when structured output (response_format) is used. LiteLLM temporarily swaps model to
-    # claude-3-sonnet-20240229 to force tool-based response_format, but this mistakenly converts
-    # reasoning_effort into legacy thinking={"type": "enabled"} and retains non-1.0 temperature.
-    try:
-        from litellm.llms.vertex_ai.vertex_ai_partner_models.anthropic.transformation import VertexAIAnthropicConfig
-        from litellm.llms.anthropic.chat.transformation import (
-            AnthropicConfig,
-            REASONING_EFFORT_TO_OUTPUT_CONFIG_EFFORT,
-        )
-
-        _orig_vertex_anthropic_map_openai_params = VertexAIAnthropicConfig.map_openai_params
-
-        def _safe_vertex_anthropic_map_openai_params(
-            self,
-            non_default_params: dict,
-            optional_params: dict,
-            model: str,
-            drop_params: bool,
-        ) -> dict:
-            original_model = model
-            provider = getattr(self, "_resolved_provider", "vertex_ai")
-            is_adaptive = False
-            try:
-                is_adaptive = AnthropicConfig._is_adaptive_thinking_model(original_model, provider)
-            except Exception:
-                pass
-
-            res = _orig_vertex_anthropic_map_openai_params(
-                self,
-                non_default_params=non_default_params,
-                optional_params=optional_params,
-                model=model,
-                drop_params=drop_params,
-            )
-
-            if is_adaptive:
-                raw_effort = non_default_params.get("reasoning_effort")
-                if isinstance(raw_effort, dict):
-                    raw_effort = raw_effort.get("effort")
-                if raw_effort and raw_effort != "none":
-                    mapped_effort = REASONING_EFFORT_TO_OUTPUT_CONFIG_EFFORT.get(raw_effort, raw_effort)
-                    res["thinking"] = {"type": "adaptive"}
-                    res["output_config"] = {"effort": mapped_effort}
-                elif "thinking" in res and isinstance(res["thinking"], dict) and res["thinking"].get("type") == "enabled":
-                    res["thinking"] = {"type": "adaptive"}
-
-                # If thinking is enabled on an adaptive model, drop non-1.0 temperature and top_p
-                if "thinking" in res:
-                    temp = res.get("temperature")
-                    if temp is not None and temp != 1:
-                        res.pop("temperature", None)
-                    res.pop("top_p", None)
-            return res
-
-        VertexAIAnthropicConfig.map_openai_params = _safe_vertex_anthropic_map_openai_params
-    except Exception:
-        pass
 except Exception:
     pass
 
@@ -113,16 +33,25 @@ except Exception:
             return factory()
         return kwargs.get("default", None)
 
-DEFAULT_MODEL = "vertex_ai/gemini-3.7-flash"
+# Default model served by a local Ollama daemon (OpenAI-compatible).
+# Set OLLAMA_MODEL to override, or use a bare `ollama/<model>` / `openai/<model>`
+# id together with LLM_API_BASE to point at any OpenAI-compatible endpoint
+# (including Ollama Cloud at https://ollama.com/v1).
+DEFAULT_MODEL = "ollama/deepseek-v4-flash"
+# Local Ollama daemon (default port 11434) exposed through its OpenAI-compatible /v1.
+DEFAULT_API_BASE = os.environ.get("DEFAULT_API_BASE") or "http://localhost:11434/v1"
+# Ollama-provided OpenAI-compatible hosted base URL.
+OLLAMA_CLOUD_API_BASE = "https://ollama.com/v1"
+OLLAMA_CLOUD_PREFIX = "ollama.cloud/"
 SUPPORTED_SANDBOXES = ("static-only", "static", "gvisor", "microsandbox", "gce")
 RECOMMENDED_MODELS = (
-    "gemini-3.7-flash",
-    "gemini-3.5-flash-lite",
-    "claude-opus-5",
-    "vertex_ai/gemini-3.7-flash",
-    "vertex_ai/gemini-3.5-flash-lite",
-    "vertex_ai/claude-opus-5",
-    "vertex_ai/zai_org/glm-5.2-maas",
+    "ollama/deepseek-v4-flash",
+    "ollama/deepseek-v4.1-flash",
+    "ollama/glm-5.3",
+    "ollama/glm-5.3-flash",
+    "ollama/minimax-m3",
+    "ollama/kimi-k3",
+    "ollama/qwen3.5",
 )
 
 PLACEHOLDER_STRINGS = {
@@ -157,37 +86,52 @@ def is_placeholder(val: Any) -> bool:
     return False
 
 
+def _is_unconfigured_api_base(val: Any) -> bool:
+    """Returns True for an api_base that is empty, a placeholder, or not a URL.
+
+    A valid HTTP(S) URL is never treated as unconfigured. This is checked before
+    is_placeholder, because is_placeholder would otherwise flag the empty segment
+    produced by the '://' in any URL.
+    """
+    if val is None:
+        return True
+    s = str(val).strip()
+    if not s:
+        return True
+    if s.lower().startswith(("http://", "https://")):
+        return False
+    return True
+
+
 def normalize_model_id(model_id: str) -> str:
-    """Normalizes model names and routes bare gemini/claude models to vertex_ai or gemini/ based on credentials."""
+    """Normalizes model names and routes model ids to an OpenAI-compatible endpoint.
+
+    Routing is local-first and removes the Google/Vertex AI dependency:
+      * `ollama/<model>` -> local Ollama daemon (OpenAI-compatible /v1 at
+        DEFAULT_API_BASE, usually http://localhost:11434/v1).
+      * `ollama.cloud/<model>` -> Ollama Cloud's OpenAI-compatible endpoint
+        (https://ollama.com/v1).
+      * `openai/<model>` -> any OpenAI-compatible endpoint resolved at call time
+        (LLM_API_BASE / api_base / default api base), e.g. vLLM, LM Studio, or
+        Ollama Cloud.
+      * A bare model name with no provider prefix is assumed to be a local
+        Ollama model and routed accordingly.
+      * Direct Anthropic remains supported only when ANTHROPIC_API_KEY is set.
+    """
     if not model_id:
         return DEFAULT_MODEL
     cleaned = model_id.strip()
-    if cleaned.startswith("gemini-"):
-        # If explicit Google AI Studio API key exists, route to gemini/ for LiteLLM
-        if os.environ.get("GEMINI_API_KEY"):
-            return f"gemini/{cleaned}"
-        # If running in GCP / Vertex environment without explicit Google AI Studio API key, route to vertex_ai/
-        if (
-            os.environ.get("VERTEXAI_PROJECT")
-            or os.environ.get("GOOGLE_CLOUD_PROJECT")
-        ):
-            return f"vertex_ai/{cleaned}"
-    if cleaned.startswith("claude-"):
-        # Route bare claude models to vertex_ai when GCP credentials exist and no direct Anthropic API key is set
-        if not os.environ.get("ANTHROPIC_API_KEY") and (
-            os.environ.get("VERTEXAI_PROJECT")
-            or os.environ.get("GOOGLE_CLOUD_PROJECT")
-        ):
-            return f"vertex_ai/{cleaned}"
-    if cleaned in (
-        "glm-5.2-maas",
-        "zai-org/glm-5.2-maas",
-        "vertex_ai/glm-5.2-maas",
-        "vertex_ai/zai_org/glm-5.2-maas",
-        "vertex_ai/zai-org/glm-5.2-maas",
-        "vertex_ai/openai/zai-org/glm-5.2-maas",
-    ):
-        return "vertex_ai/openai/zai-org/glm-5.2-maas"
+    if cleaned.startswith("ollama/"):
+        return cleaned
+    if cleaned.startswith(OLLAMA_CLOUD_PREFIX):
+        return cleaned.replace(OLLAMA_CLOUD_PREFIX, "openai/", 1)
+    if cleaned.startswith("openai/"):
+        return cleaned
+    if cleaned.startswith("claude-") and os.environ.get("ANTHROPIC_API_KEY"):
+        return f"anthropic/{cleaned}"
+    if "/" not in cleaned:
+        # Fallback: treat a bare model id as a local Ollama model.
+        return f"ollama/{cleaned}"
     return cleaned
 
 
@@ -1334,8 +1278,33 @@ def get_llm_kwargs(
     else:
         raw_model = model_id or os.environ.get("MODEL_ID") or default_model
 
+    raw_is_ollama_cloud = raw_model.strip().startswith(OLLAMA_CLOUD_PREFIX)
     resolved_model = normalize_model_id(raw_model)
-    resolved_api_base = api_base or os.environ.get("LLM_API_BASE") or default_api_base
+
+    # config (global config dict, e.g. from workflow.json) may carry an api_base.
+    config_api_base = None
+    if config and isinstance(config, dict):
+        config_api_base = config.get("api_base")
+        if isinstance(config.get("config"), dict):
+            config_api_base = config_api_base or config["config"].get("api_base")
+        if isinstance(config.get("sandbox"), dict):
+            sb_opts = config["sandbox"].get("options")
+            if isinstance(sb_opts, dict) and not config_api_base:
+                config_api_base = sb_opts.get("api_base")
+        if config_api_base and _is_unconfigured_api_base(config_api_base):
+            config_api_base = None
+
+    # Resolve api_base: explicit > config > LLM_API_BASE > default_api_base > provider default.
+    #  - Local Ollama defaults to the local daemon's OpenAI-compatible /v1.
+    #  - Ollama Cloud (/v1-compatible hosted) defaults to https://ollama.com/v1.
+    #  - Generic openai/ uses any configured base (vLLM, LM Studio, Ollama Cloud).
+    resolved_api_base = api_base or config_api_base or os.environ.get("LLM_API_BASE") or default_api_base
+    if not resolved_api_base:
+        if raw_is_ollama_cloud:
+            resolved_api_base = OLLAMA_CLOUD_API_BASE
+        elif resolved_model.startswith("ollama/"):
+            resolved_api_base = DEFAULT_API_BASE
+
     raw_timeout = timeout if timeout is not None else (
         os.environ.get("LLM_TIMEOUT")
         or os.environ.get("MANTIS_TIMEOUT")
@@ -1343,7 +1312,7 @@ def get_llm_kwargs(
         or default_timeout
     )
     effort = reasoning_effort or os.environ.get("REASONING_EFFORT") or default_reasoning_effort
-    if raw_timeout is None and (effort in ("high", "medium") or "glm" in resolved_model or "claude" in resolved_model):
+    if raw_timeout is None and (effort in ("high", "medium") or "claude" in resolved_model):
         raw_timeout = 300.0
 
     llm_kwargs = {"model": resolved_model}
@@ -1368,60 +1337,6 @@ def get_llm_kwargs(
     elif effort in ("high", "medium") or "claude" in resolved_model:
         # Provide a generous output token budget so thinking tokens do not starve response text
         llm_kwargs.setdefault("max_tokens", 32768)
-
-    if resolved_model.startswith("vertex_ai/"):
-        project = os.environ.get("VERTEXAI_PROJECT") or os.environ.get("GOOGLE_CLOUD_PROJECT")
-        if is_placeholder(project):
-            project = None
-
-        if not project and config and isinstance(config, dict):
-            cfg_proj = config.get("project")
-            if not cfg_proj or is_placeholder(cfg_proj):
-                sb = config.get("sandbox")
-                if isinstance(sb, dict):
-                    sb_opts = sb.get("options")
-                    if isinstance(sb_opts, dict):
-                        cfg_proj = sb_opts.get("project")
-            if cfg_proj and not is_placeholder(cfg_proj):
-                project = str(cfg_proj)
-
-        location = os.environ.get("VERTEXAI_LOCATION") or os.environ.get("GOOGLE_CLOUD_LOCATION") or "global"
-
-        if not project:
-            try:
-                import google.auth
-                _, project = google.auth.default()
-                if is_placeholder(project):
-                    project = None
-            except Exception:
-                pass
-
-        if not project and not resolved_api_base:
-            raise ValueError("ERROR: You must set VERTEXAI_PROJECT or GOOGLE_CLOUD_PROJECT env variables.")
-
-        if project:
-            llm_kwargs["vertex_project"] = project
-            llm_kwargs["vertex_location"] = location
-        # Relax safety filters for Gemini models that sometimes trigger erroneously on
-        # defensive security analysis and vulnerability remediation workflows.
-        if "gemini" in resolved_model:
-            safety_settings = [
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            ]
-            llm_kwargs["safety_settings"] = safety_settings
-            try:
-                import litellm
-                litellm.vertex_ai_safety_settings = safety_settings
-            except Exception:
-                pass
-
-        if os.environ.get("VERTEX_FLEX") in ("1", "true", "True") or os.environ.get("VERTEXAI_SERVICE_TIER", "").lower() == "flex":
-            headers = llm_kwargs.get("extra_headers") or {}
-            headers["X-Vertex-AI-LLM-Request-Type"] = "shared"
-            llm_kwargs["extra_headers"] = headers
 
     return resolved_model, llm_kwargs
 

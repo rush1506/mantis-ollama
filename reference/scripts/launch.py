@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         "-m",
         type=str,
-        help="Global LLM model override (e.g. gemini-3.7-flash, vertex_ai/claude-opus-5, openai/my-model)",
+        help="Global LLM model override (e.g. ollama/deepseek-v4-flash, ollama/glm-5.3, openai/my-model)",
     )
     parser.add_argument("--api-base", type=str, help="Custom LLM API Base URL for OpenAI-compatible models")
     parser.add_argument(
@@ -284,7 +284,7 @@ def run_launch(
         mode_str = "LLM-driven research graph synthesis" if synthesize_llm else "deterministic archetype"
         print(f"✨ Synthesizing targeted research graph for objective: '{objective}' (mode: {mode_str})...")
         synthesizer = ResearchGraphSynthesizer(
-            default_model=model or "vertex_ai/gemini-3.7-flash",
+            default_model=model or "ollama/deepseek-v4-flash",
             db_path=db_path or "knowledge.db",
         )
         effective_sandbox = sandbox

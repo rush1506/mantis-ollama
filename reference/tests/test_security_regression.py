@@ -1018,7 +1018,7 @@ class TestWorkspaceOverlayIsolation(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def test_synthesized_workflow_ignores_cwd_overlay(self):
-        synth = ResearchGraphSynthesizer(default_model="vertex_ai/gemini-3.7-flash", db_path="knowledge.db")
+        synth = ResearchGraphSynthesizer(default_model="ollama/deepseek-v4-flash", db_path="knowledge.db")
         spec = synth.synthesize(
             objective="audit api",
             budget_config=BudgetConfig(),
