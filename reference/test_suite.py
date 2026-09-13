@@ -1821,13 +1821,18 @@ class TestMantisReferenceSuite(unittest.IsolatedAsyncioTestCase):
 
     def test_get_llm_kwargs_resolution_and_precedence(self):
         """Tests LLM resolution precedence for model_id and api_base across all tiers."""
-        # 1. Defaults (ollama local daemon)
+        # 1. Defaults (ollama :cloud model routes to Ollama Cloud)
         with patch.dict(os.environ, {}, clear=True):
             mid, kwargs = get_llm_kwargs()
             self.assertEqual(mid, DEFAULT_MODEL)
             self.assertEqual(kwargs["model"], DEFAULT_MODEL)
-            self.assertEqual(kwargs["api_base"], "http://localhost:11434/v1")
+            self.assertEqual(kwargs["api_base"], "https://ollama.com")
             self.assertNotIn("vertex_project", kwargs)
+
+        # 1b. A non-':cloud' ollama model stays on the local daemon
+        with patch.dict(os.environ, {}, clear=True):
+            mid, kwargs = get_llm_kwargs(model_id="ollama/llama3")
+            self.assertEqual(kwargs["api_base"], "http://localhost:11434/v1")
 
         # 2. MODEL_ID environment variable
         with patch.dict(os.environ, {"MODEL_ID": "openai/gpt-4o"}, clear=True):
@@ -3968,12 +3973,17 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
     def test_model_normalization_and_routing(self):
         from core.config import normalize_model_id, get_llm_kwargs
 
-        # Bare ollama model stays ollama-prefixed and gets the local daemon api_base
+        # Bare :cloud model stays ollama-prefixed and routes to Ollama Cloud
         normalized = normalize_model_id("deepseek-v4-flash:cloud")
         self.assertEqual(normalized, "ollama/deepseek-v4-flash:cloud")
         with patch.dict(os.environ, {}, clear=True):
             _, kwargs = get_llm_kwargs(model_id="deepseek-v4-flash:cloud")
             self.assertEqual(kwargs["model"], "ollama/deepseek-v4-flash:cloud")
+            self.assertEqual(kwargs["api_base"], "https://ollama.com")
+
+        # A bare (non-':cloud') ollama model stays on the local daemon
+        with patch.dict(os.environ, {}, clear=True):
+            _, kwargs = get_llm_kwargs(model_id="ollama/llama3")
             self.assertEqual(kwargs["api_base"], "http://localhost:11434/v1")
 
         # Global model override takes precedence

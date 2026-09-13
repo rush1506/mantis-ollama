@@ -7,7 +7,25 @@ import re
 import sys
 import time
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, Optional, Tuple, Union
+
+# Load credentials from a local, git-ignored .env file (e.g. OLLAMA_API_KEY) so
+# API keys never live in source control. The first existing file wins; existing
+# process environment variables always take precedence (never overwritten).
+for _mantis_env in (
+    Path(__file__).resolve().parent / ".env",          # reference/core/.env
+    Path(__file__).resolve().parent.parent / ".env",   # reference/.env
+    Path(__file__).resolve().parent.parent.parent / ".env",  # repo root .env
+):
+    if _mantis_env.is_file():
+        try:
+            from dotenv import load_dotenv
+
+            load_dotenv(dotenv_path=str(_mantis_env), override=False, verbose=False)
+        except Exception:
+            pass
+        break
 
 # Suppress ADK warning regarding Gemini via LiteLLM to maintain unified error handling and backoff
 os.environ.setdefault("ADK_SUPPRESS_GEMINI_LITELLM_WARNINGS", "true")
@@ -40,8 +58,12 @@ except Exception:
 DEFAULT_MODEL = "ollama/deepseek-v4-flash:cloud"
 # Local Ollama daemon (default port 11434) exposed through its OpenAI-compatible /v1.
 DEFAULT_API_BASE = os.environ.get("DEFAULT_API_BASE") or "http://localhost:11434/v1"
-# Ollama-provided OpenAI-compatible hosted base URL.
-OLLAMA_CLOUD_API_BASE = "https://ollama.com/v1"
+# Ollama Cloud native completion base (LiteLLM's 'ollama' provider appends
+# /api/generate, so the base must NOT carry a trailing /v1).
+OLLAMA_CLOUD_API_BASE = "https://ollama.com"
+# Ollama Cloud OpenAI-compatible base (used when a 'ollama.cloud/<m>' alias is
+# rewritten to the 'openai/' provider, which appends /chat/completions).
+OLLAMA_CLOUD_OPENAI_BASE = "https://ollama.com/v1"
 OLLAMA_CLOUD_PREFIX = "ollama.cloud/"
 SUPPORTED_SANDBOXES = ("static-only", "static", "gvisor", "microsandbox", "gce")
 RECOMMENDED_MODELS = (
@@ -1278,7 +1300,16 @@ def get_llm_kwargs(
     else:
         raw_model = model_id or os.environ.get("MODEL_ID") or default_model
 
-    raw_is_ollama_cloud = raw_model.strip().startswith(OLLAMA_CLOUD_PREFIX)
+    # A model id carrying the ':cloud' suffix (e.g. ollama/deepseek-v4-flash:cloud)
+    # is an Ollama-hosted model and must reach the Ollama Cloud endpoint, not the
+    # local daemon. Honor both the 'ollama.cloud/' prefix and the ':cloud' suffix.
+    raw_is_ollama_cloud = (
+        raw_model.strip().startswith(OLLAMA_CLOUD_PREFIX)
+        or raw_model.strip().endswith(":cloud")
+    )
+    # Whether this cloud model flows through the OpenAI provider (ollama.cloud/ alias
+    # rewritten to openai/<m>) vs. the native Ollama provider (:cloud suffix).
+    raw_is_ollama_cloud_openai = raw_model.strip().startswith(OLLAMA_CLOUD_PREFIX)
     resolved_model = normalize_model_id(raw_model)
 
     # config (global config dict, e.g. from workflow.json) may carry an api_base.
@@ -1301,9 +1332,28 @@ def get_llm_kwargs(
     resolved_api_base = api_base or config_api_base or os.environ.get("LLM_API_BASE") or default_api_base
     if not resolved_api_base:
         if raw_is_ollama_cloud:
-            resolved_api_base = OLLAMA_CLOUD_API_BASE
+            # ollama.cloud/* flows via the OpenAI provider (appends /chat/completions)
+            # -> /v1 base. :cloud suffix flows via the native Ollama provider
+            # (appends /api/generate) -> no /v1 base.
+            resolved_api_base = (
+                OLLAMA_CLOUD_OPENAI_BASE if raw_is_ollama_cloud_openai else OLLAMA_CLOUD_API_BASE
+            )
         elif resolved_model.startswith("ollama/"):
             resolved_api_base = DEFAULT_API_BASE
+
+    # Inform the operator that the endpoint was auto-resolved for this model and
+    # how to override it (or drop back to a local model). Printed once per resolve;
+    # harmless in normal runs, useful when debugging LLM connectivity.
+    if os.environ.get("MANTIS_DEBUG_LLM_BASE") in ("1", "true", "True"):
+        if raw_is_ollama_cloud and not (api_base or config_api_base or os.environ.get("LLM_API_BASE")):
+            print(
+                f"[LLM BASE] '{resolved_model}' is an Ollama Cloud model; auto-using "
+                f"api_base={resolved_api_base}. Override with LLM_API_BASE, workflow "
+                f"config 'api_base', or use a non-':cloud' model for the local daemon "
+                f"({DEFAULT_API_BASE}).",
+                file=sys.stderr,
+                flush=True,
+            )
 
     raw_timeout = timeout if timeout is not None else (
         os.environ.get("LLM_TIMEOUT")
@@ -1318,6 +1368,25 @@ def get_llm_kwargs(
     llm_kwargs = {"model": resolved_model}
     if resolved_api_base:
         llm_kwargs["api_base"] = resolved_api_base
+
+    # Inject provider API keys for hosted/cloud endpoints (never send secrets with
+    # credentials to a local daemon). Keys come from env or the git-ignored .env
+    # file loaded at module import. Order: model-specific generic key fallback.
+    _key = None
+    if raw_is_ollama_cloud or raw_is_ollama_cloud_openai:
+        # Ollama Cloud requires an API key.
+        _key = (
+            os.environ.get("OLLAMA_API_KEY")
+            or os.environ.get("OLLAMA_CLOUD_API_KEY")
+            or ""
+        )
+    elif resolved_model.startswith("openai/"):
+        _key = os.environ.get("OPENAI_API_KEY") or ""
+    elif resolved_model.startswith("anthropic/"):
+        _key = os.environ.get("ANTHROPIC_API_KEY") or ""
+    if _key:
+        llm_kwargs["api_key"] = _key
+
     if effort:
         llm_kwargs["reasoning_effort"] = str(effort).lower().strip()
     if raw_timeout is not None:

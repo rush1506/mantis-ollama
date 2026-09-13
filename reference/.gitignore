@@ -4,3 +4,9 @@ knowledge.db
 workflow.local.json
 *.local.json
 .workflow.local.json
+
+# Local credentials (never commit live secrets; keep .env.example)
+.env
+.env.*
+!.env.example
+.env

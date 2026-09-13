@@ -13,7 +13,10 @@ tools (`mantis-configure` and `mantis-launch`):
 ```bash
 cd reference && ./install.sh
 
-# 0. Start a local Ollama daemon and pull the default model, OR point to any
+# 0. Provide credentials for hosted/cloud models (git-ignored .env). Copy the
+#    template and fill in OLLAMA_API_KEY (and/or OPENAI_API_KEY, ANTHROPIC_API_KEY):
+#    cp .env.example .env
+#    Start a local Ollama daemon and pull the default model, OR point to any
 #    OpenAI-compatible endpoint. Local Ollama needs no cloud credentials:
 ollama serve &                    # local daemon (default http://localhost:11434/v1)
 ollama pull deepseek-v4-flash:cloud     # default model

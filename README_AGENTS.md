@@ -60,7 +60,9 @@ CLI, Google ADK, and other coding agent frameworks. Consider:
    Start a local Ollama daemon (`ollama serve`, then `ollama pull deepseek-v4-flash:cloud`) or
    point `LLM_API_BASE` at any OpenAI-compatible server (e.g. Ollama Cloud,
    `https://ollama.com/v1`). No cloud SDK or account credentials are required
-   for the default local-Ollama path.
+   for the default local-Ollama path. **If using hosted/`:cloud` models**, provide
+   an API key in a git-ignored `.env` file (template: `reference/.env.example`),
+   e.g. `OLLAMA_API_KEY=your-key` for Ollama Cloud.
 
 To install the skills via CLI:
 
