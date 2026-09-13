@@ -309,11 +309,24 @@ class MantisStreamingTruncationError(RuntimeError):
 class MantisEmptyTurnError(RuntimeError):
     """Raised when a non-streaming LLM turn finishes with STOP but zero content parts.
 
-    ADK surfaces this case as ``MODEL_RETURNED_NO_CONTENT``, which otherwise becomes
-    a fatal event error that aborts the whole campaign. It is a transient model
-    (e.g. DeepSeek) artifact, so the resilience wrapper retries it like any other
-    retryable transient turn rather than failing the pipeline.
+    ADK surfaces this case as ``MODEL_RETURNED_NO_CONTENT``. For a given conversation
+    state it is often DETERMINISTIC (DeepSeek/Ollama swallowing all output on
+    think=true), so the wrapper retries it only a small bounded number of times,
+    then raises MantisEmptyTurnExhaustedError (non-retryable) rather than hanging
+    under the generic 1h transient patience.
     """
+
+    pass
+
+
+class MantisEmptyTurnExhaustedError(RuntimeError):
+    """Raised after the bounded empty-turn retry budget is exhausted.
+
+    This is intentionally NOT retryable (unlike ``MantisEmptyTurnError``): a request
+    that returns empty repeatedly for the same conversation state will not recover,
+    and retrying it under the 1h patience only hangs the campaign.
+    """
+
     pass
 
 
@@ -1206,13 +1219,28 @@ class ResilientLiteLlm(LiteLlm):
         min_offset = float(os.environ.get("MANTIS_LLM_MIN_OFFSET", "5.0"))
         backoff_factor = float(os.environ.get("MANTIS_LLM_RETRY_BACKOFF", "2.0"))
 
+        # Empty-turn retries are budgeted separately and tightly. ADK emits
+        # MODEL_RETURNED_NO_CONTENT when a non-streaming turn ends STOP with no
+        # content parts; for a given conversation state that is usually
+        # DETERMINISTIC (DeepSeek/Ollama sometimes swallows all output on
+        # think=true), so retrying it hundreds of times under the 1h transient
+        # patience only hangs the campaign. Keep it to a few short attempts, then
+        # fail gracefully so ADK's node-level retry/resume can steer around it.
+        empty_max_attempts = int(os.environ.get("MANTIS_EMPTY_TURN_MAX_ATTEMPTS", "3"))
+        empty_initial_delay = float(os.environ.get("MANTIS_EMPTY_TURN_INITIAL_DELAY", "3.0"))
+        empty_max_delay = float(os.environ.get("MANTIS_EMPTY_TURN_MAX_DELAY", "15.0"))
+        empty_min_offset = float(os.environ.get("MANTIS_EMPTY_TURN_MIN_OFFSET", "1.0"))
+        empty_backoff_factor = float(os.environ.get("MANTIS_EMPTY_TURN_BACKOFF", "1.5"))
+
         start_time = time.time()
         attempt = 0
         auth_refreshed = False
         current_stream = stream
+        empty_attempts = 0
         while True:
             try:
                 from google.genai import types as genai_types
+                empty_turn_seen = False
                 async for response in super().generate_content_async(llm_request, stream=current_stream):
                     if (
                         current_stream
@@ -1225,12 +1253,43 @@ class ResilientLiteLlm(LiteLlm):
                         raise MantisStreamingTruncationError(str(getattr(response, "error_message", "")))
                     if not current_stream and self._is_empty_stop_turn(response):
                         # A non-streaming turn that ends with STOP but no content is emitted
-                        # as a fatal MODEL_RETURNED_NO_CONTENT event by ADK's postprocess,
-                        # aborting the whole campaign. Retry the turn instead.
-                        raise MantisEmptyTurnError(
-                            "Model returned no content (finish_reason=STOP with empty parts). Retrying turn."
+                        # as a fatal MODEL_RETURNED_NO_CONTENT event by ADK's postprocess.
+                        # Retry a small bounded number of times (it is usually
+                        # deterministic for a given conversation state), then surface
+                        # a non-retryable error rather than hang under the 1h patience.
+                        if empty_attempts >= empty_max_attempts:
+                            # Non-retryable: an identical request that repeatedly
+                            # returns empty will not recover, and retrying it under
+                            # the 1h transient patience only hangs the campaign.
+                            raise MantisEmptyTurnExhaustedError(
+                                "Model returned no content (finish_reason=STOP with empty parts) "
+                                f"after {empty_attempts} empty-turn attempts; giving up on this request."
+                            )
+                        empty_attempts += 1
+                        empty_turn_seen = True
+                        empty_delay = compute_full_jitter_delay(
+                            attempt=empty_attempts,
+                            initial_delay=empty_initial_delay,
+                            max_delay=empty_max_delay,
+                            min_offset=empty_min_offset,
+                            backoff_factor=empty_backoff_factor,
                         )
+                        model_name = str(getattr(self, "model", getattr(llm_request, "model", "llm")))
+                        print(
+                            f"\n[EMPTY TURN RETRY] '{model_name}' returned no content "
+                            f"(finish_reason=STOP, no parts) on attempt {empty_attempts}/{empty_max_attempts}. "
+                            f"Pausing {empty_delay:.1f}s before retrying...",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        await asyncio.sleep(empty_delay)
+                        # Leave the generator to re-issue the request on the while
+                        # loop; mark that the empty turn (not a streamed response)
+                        # is what ended this try.
+                        break
                     yield self._sanitize_structured_response(response, schema_cls)
+                if empty_turn_seen:
+                    continue
                 return
             except (json.decoder.JSONDecodeError, ValueError, MantisStreamingTruncationError) as e:
                 if current_stream:
