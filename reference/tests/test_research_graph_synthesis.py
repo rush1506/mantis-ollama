@@ -506,7 +506,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
                     "id": "dedupe",
                     "type": "agent",
                     "skill": "mantis-dedupe",
-                    "model": "ollama/deepseek-v4-flash",
+                    "model": "ollama/deepseek-v4-flash:cloud",
                     "reasoning_effort": "medium",
                     "tools": ["get_findings", "dedupe_findings"],
                 },
@@ -524,7 +524,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
             ],
         }
 
-        synth = ResearchGraphSynthesizer(default_model="ollama/deepseek-v4-flash")
+        synth = ResearchGraphSynthesizer(default_model="ollama/deepseek-v4-flash:cloud")
         spec = synth.sanitize_and_validate_spec(
             raw_dict=malicious_raw,
             objective="Security audit with untrusted model and api_base injection",
@@ -532,7 +532,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
 
         # 1. Global config verification
         self.assertIsNone(spec.config.api_base)
-        self.assertEqual(spec.config.default_model, "ollama/deepseek-v4-flash")
+        self.assertEqual(spec.config.default_model, "ollama/deepseek-v4-flash:cloud")
 
         # 2. Malicious node verification (unauthorized model, api_base, and invalid reasoning_effort dropped)
         node_map = {n.id: n for n in spec.nodes}
@@ -544,7 +544,7 @@ class TestResearchGraphSynthesis(unittest.TestCase):
         # 3. Legitimate whitelisted node verification
         dedupe_node = node_map["dedupe"]
         self.assertIsNone(dedupe_node.api_base)
-        self.assertEqual(dedupe_node.model, "ollama/deepseek-v4-flash")
+        self.assertEqual(dedupe_node.model, "ollama/deepseek-v4-flash:cloud")
         self.assertEqual(dedupe_node.reasoning_effort, "medium")
 
 

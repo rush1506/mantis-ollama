@@ -10,7 +10,7 @@ LiteLlm = ResilientLiteLlm
 from tools import TOOLS
 
 def build_deduplicator_agent():
-    eval_model = os.environ.get('EVAL_MODEL', 'ollama/deepseek-v4-flash')
+    eval_model = os.environ.get('EVAL_MODEL', 'ollama/deepseek-v4-flash:cloud')
     eval_effort = os.environ.get('EVAL_REASONING_EFFORT', 'low')
 
     _, llm_kwargs = get_llm_kwargs(

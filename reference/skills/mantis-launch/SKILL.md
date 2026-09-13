@@ -43,7 +43,7 @@ target repositories.
     a root repository directory (e.g. `.` or `/path/to/repo`).
   - `--sandbox` / `-s`: Override sandbox mechanism (`static-only`, `gvisor`,
     `microsandbox`, `gce`).
-  - `--model` / `-m`: Override AI model (e.g. `ollama/deepseek-v4-flash`,
+  - `--model` / `-m`: Override AI model (e.g. `ollama/deepseek-v4-flash:cloud`,
     `ollama/glm-5.3`, `openai/{MODEL_ID}`).
   - `--api-base`: Custom endpoint URL for OpenAI-compatible LLM deployments
     (e.g. `http://localhost:11434/v1`, `https://ollama.com/v1`).
@@ -98,7 +98,7 @@ Before starting a security campaign, `mantis-launch`:
 
 ```bash
 # Local Ollama (default)
-"$MANTIS_HOME/reference/run.sh" . --model ollama/deepseek-v4-flash
+"$MANTIS_HOME/reference/run.sh" . --model ollama/deepseek-v4-flash:cloud
 
 # Ollama Cloud (hosted OpenAI-compatible)
 "$MANTIS_HOME/reference/run.sh" . --model ollama/glm-5.3 --api-base https://ollama.com/v1

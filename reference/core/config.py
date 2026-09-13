@@ -37,7 +37,7 @@ except Exception:
 # Set OLLAMA_MODEL to override, or use a bare `ollama/<model>` / `openai/<model>`
 # id together with LLM_API_BASE to point at any OpenAI-compatible endpoint
 # (including Ollama Cloud at https://ollama.com/v1).
-DEFAULT_MODEL = "ollama/deepseek-v4-flash"
+DEFAULT_MODEL = "ollama/deepseek-v4-flash:cloud"
 # Local Ollama daemon (default port 11434) exposed through its OpenAI-compatible /v1.
 DEFAULT_API_BASE = os.environ.get("DEFAULT_API_BASE") or "http://localhost:11434/v1"
 # Ollama-provided OpenAI-compatible hosted base URL.
@@ -45,7 +45,7 @@ OLLAMA_CLOUD_API_BASE = "https://ollama.com/v1"
 OLLAMA_CLOUD_PREFIX = "ollama.cloud/"
 SUPPORTED_SANDBOXES = ("static-only", "static", "gvisor", "microsandbox", "gce")
 RECOMMENDED_MODELS = (
-    "ollama/deepseek-v4-flash",
+    "ollama/deepseek-v4-flash:cloud",
     "ollama/deepseek-v4.1-flash",
     "ollama/glm-5.3",
     "ollama/glm-5.3-flash",

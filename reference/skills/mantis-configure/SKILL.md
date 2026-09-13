@@ -35,7 +35,7 @@ inside audited target repositories.
 - **CLI Options:**
   - `--sandbox` / `-s`: Sandbox mechanism (`static-only`, `gvisor`,
     `microsandbox`, `gce`).
-  - `--model` / `-m`: Default LLM model (e.g. `ollama/deepseek-v4-flash`,
+  - `--model` / `-m`: Default LLM model (e.g. `ollama/deepseek-v4-flash:cloud`,
     `ollama/glm-5.3`, `openai/{MODEL_ID}`).
   - `--api-base`: Custom endpoint URL for OpenAI-compatible LLM servers (e.g.
     `http://localhost:11434/v1`, `https://ollama.com/v1`).
@@ -78,7 +78,7 @@ inside audited target repositories.
 ## Supported Model Providers
 
 1. **Local Ollama (default)**:
-   - `ollama/deepseek-v4-flash`, `ollama/deepseek-v4.1-flash`, `ollama/glm-5.3`,
+   - `ollama/deepseek-v4-flash:cloud`, `ollama/deepseek-v4.1-flash`, `ollama/glm-5.3`,
      `ollama/glm-5.3-flash`, `ollama/minimax-m3`, `ollama/kimi-k3`,
      `ollama/qwen3.5`
    - Serviced by the local Ollama daemon via its OpenAI-compatible `/v1`
@@ -136,7 +136,7 @@ python3 "$MANTIS_HOME/reference/scripts/configure.py" --sandbox gce --project my
 
 ### 6. Switch AI Model to Local Ollama or Custom Endpoint
  (default)
-python3 "$MANTIS_HOME/reference/scripts/configure.py" --model ollama/deepseek-v4-flash
+python3 "$MANTIS_HOME/reference/scripts/configure.py" --model ollama/deepseek-v4-flash:cloud
 
 # Ollama Cloud (hosted OpenAI-compatible)
 python3 "$MANTIS_HOME/reference/scripts/configure.py" --model ollama/glm-5.3 --api-base https://ollama.com/v1

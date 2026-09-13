@@ -28,7 +28,7 @@ cd reference && ./install.sh
 
 # 0. Start a local Ollama daemon and pull the default model, OR point to any
 #    OpenAI-compatible endpoint (e.g. Ollama Cloud at https://ollama.com/v1).
-ollama serve && ollama pull deepseek-v4-flash
+ollama serve && ollama pull deepseek-v4-flash:cloud
 
 # 1. Fast Configuration & Capability Auto-Detection (or --interactive wizard)
 python3 scripts/configure.py --auto

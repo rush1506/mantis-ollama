@@ -16,7 +16,7 @@ cd reference && ./install.sh
 # 0. Start a local Ollama daemon and pull the default model, OR point to any
 #    OpenAI-compatible endpoint. Local Ollama needs no cloud credentials:
 ollama serve &                    # local daemon (default http://localhost:11434/v1)
-ollama pull deepseek-v4-flash     # default model
+ollama pull deepseek-v4-flash:cloud     # default model
 
 #    Ollama Cloud (hosted, OpenAI-compatible):
 #    export LLM_API_BASE="https://ollama.com/v1"
@@ -57,7 +57,7 @@ You can customize the sandbox execution mechanism (`static-only`, `gvisor`,
 python3 scripts/configure.py --sandbox static-only
 
 # Or pass runtime overrides directly to launch:
-./run.sh path/to/code --sandbox static-only --model ollama/deepseek-v4-flash
+./run.sh path/to/code --sandbox static-only --model ollama/deepseek-v4-flash:cloud
 ```
 
 Once you have run it you can add the mantis-advise skill to your favorite coding

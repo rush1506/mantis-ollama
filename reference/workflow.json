@@ -3,7 +3,7 @@
   "config": {
     "db_path": "knowledge.db",
     "retry_attempts": 3,
-    "default_model": "ollama/deepseek-v4-flash",
+    "default_model": "ollama/deepseek-v4-flash:cloud",
     "reasoning_effort": "medium",
     "timeout": 180,
     "seed_prompt": "Initial Task Input: Evaluate {filepath}",
@@ -24,14 +24,14 @@
     {
       "id": "history",
       "type": "agent",
-      "model": "ollama/deepseek-v4-flash",
+      "model": "ollama/deepseek-v4-flash:cloud",
       "reasoning_effort": "low",
       "tools": ["get_git_log", "get_git_diff", "read_file", "write_file", "list_files", "get_summary"]
     },
     {
       "id": "structural_index",
       "type": "agent",
-      "model": "ollama/deepseek-v4-flash",
+      "model": "ollama/deepseek-v4-flash:cloud",
       "reasoning_effort": "low",
       "tools": ["read_file", "write_file", "list_files", "run_sandbox"]
     },
@@ -62,7 +62,7 @@
     {
       "id": "deduplicator",
       "type": "agent",
-      "model": "ollama/deepseek-v4-flash",
+      "model": "ollama/deepseek-v4-flash:cloud",
       "reasoning_effort": "low",
       "tools": ["read_file", "write_file", "list_files", "get_findings", "report_findings", "dedupe_findings"]
     },

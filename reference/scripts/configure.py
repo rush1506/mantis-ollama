@@ -948,7 +948,7 @@ def run_interactive_wizard(workflow_path: str) -> dict:
     # 2. Select Model
     print("\nStep 2: Select AI Model")
     model_choices = [
-        ("ollama/deepseek-v4-flash", "DeepSeek V4 Flash via local Ollama (Recommended)"),
+        ("ollama/deepseek-v4-flash:cloud", "DeepSeek V4 Flash via local Ollama (Recommended)"),
         ("ollama/deepseek-v4.1-flash", "DeepSeek V4.1 Flash via local Ollama"),
         ("ollama/glm-5.3", "GLM 5.3 via local Ollama"),
         ("ollama/glm-5.3-flash", "GLM 5.3 Flash via local Ollama"),
@@ -1075,7 +1075,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         "-m",
         type=str,
-        help="Default LLM model (e.g. ollama/deepseek-v4-flash, ollama/glm-5.3, openai/my-model)",
+        help="Default LLM model (e.g. ollama/deepseek-v4-flash:cloud, ollama/glm-5.3, openai/my-model)",
     )
     parser.add_argument("--api-base", type=str, help="Custom LLM API Base URL")
     parser.add_argument(

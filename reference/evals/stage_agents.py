@@ -63,7 +63,7 @@ STAGE_CONFIGS = {
 }
 
 def build_stage_agent(stage_name: str, model_id: str = None, reasoning_effort: str = None):
-    model_id = model_id or os.environ.get('EVAL_MODEL', 'ollama/deepseek-v4-flash')
+    model_id = model_id or os.environ.get('EVAL_MODEL', 'ollama/deepseek-v4-flash:cloud')
     reasoning_effort = reasoning_effort or os.environ.get('EVAL_REASONING_EFFORT', 'low')
     
     _, llm_kwargs = get_llm_kwargs(model_id=model_id, reasoning_effort=reasoning_effort)

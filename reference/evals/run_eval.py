@@ -18,8 +18,8 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
 DEFAULT_MODELS = [
-    ("ollama/deepseek-v4-flash", "low"),
-    ("ollama/deepseek-v4-flash", "high"),
+    ("ollama/deepseek-v4-flash:cloud", "low"),
+    ("ollama/deepseek-v4-flash:cloud", "high"),
     ("ollama/deepseek-v4.1-flash", "low"),
     ("ollama/deepseek-v4.1-flash", "high"),
     ("ollama/glm-5.3", "low"),

@@ -2799,7 +2799,7 @@ class TestMantisReferenceSuite(unittest.IsolatedAsyncioTestCase):
         wf_path = os.path.join(os.path.dirname(__file__), "workflow.json")
         wf, wf_config = load_workflow_from_json(wf_path, load_local=False)
         self.assertIsNotNone(wf)
-        self.assertEqual(wf_config.get("default_model"), "ollama/deepseek-v4-flash")
+        self.assertEqual(wf_config.get("default_model"), "ollama/deepseek-v4-flash:cloud")
         self.assertEqual(wf_config.get("reasoning_effort"), "medium")
         self.assertEqual(wf_config.get("on_enter_status", {}).get("reproducer"), "static_confirmed")
         self.assertEqual(wf_config.get("on_enter_status", {}).get("patcher"), "dynamic_confirmed")
@@ -3958,22 +3958,22 @@ class TestMantisConfigureAndLaunch(unittest.IsolatedAsyncioTestCase):
         from core.config import RECOMMENDED_MODELS, DEFAULT_MODEL
 
         # 1. Check RECOMMENDED_MODELS and DEFAULT_MODEL catalog
-        self.assertIn("ollama/deepseek-v4-flash", RECOMMENDED_MODELS)
+        self.assertIn("ollama/deepseek-v4-flash:cloud", RECOMMENDED_MODELS)
         self.assertIn("ollama/deepseek-v4.1-flash", RECOMMENDED_MODELS)
         self.assertIn("ollama/glm-5.3", RECOMMENDED_MODELS)
         self.assertIn("ollama/glm-5.3-flash", RECOMMENDED_MODELS)
         self.assertIn("ollama/qwen3.5", RECOMMENDED_MODELS)
-        self.assertEqual(DEFAULT_MODEL, "ollama/deepseek-v4-flash")
+        self.assertEqual(DEFAULT_MODEL, "ollama/deepseek-v4-flash:cloud")
 
     def test_model_normalization_and_routing(self):
         from core.config import normalize_model_id, get_llm_kwargs
 
         # Bare ollama model stays ollama-prefixed and gets the local daemon api_base
-        normalized = normalize_model_id("deepseek-v4-flash")
-        self.assertEqual(normalized, "ollama/deepseek-v4-flash")
+        normalized = normalize_model_id("deepseek-v4-flash:cloud")
+        self.assertEqual(normalized, "ollama/deepseek-v4-flash:cloud")
         with patch.dict(os.environ, {}, clear=True):
-            _, kwargs = get_llm_kwargs(model_id="deepseek-v4-flash")
-            self.assertEqual(kwargs["model"], "ollama/deepseek-v4-flash")
+            _, kwargs = get_llm_kwargs(model_id="deepseek-v4-flash:cloud")
+            self.assertEqual(kwargs["model"], "ollama/deepseek-v4-flash:cloud")
             self.assertEqual(kwargs["api_base"], "http://localhost:11434/v1")
 
         # Global model override takes precedence
