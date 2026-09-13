@@ -724,12 +724,30 @@ def _fold_native_ollama_reasoning(messages: Any, model: Any) -> Any:
     changed = False
     for m in messages or []:
         reasoning = _get_field(m, "reasoning_content")
-        content = _get_field(m, "content")
+        content = _content_to_string(_get_field(m, "content"))
         if not reasoning:
             out.append(m)
             continue
 
-        folded = f"<thinking>{reasoning}</thinking>{_content_to_string(content)}"
+        # The provider may already emit reasoning as '<thinking>...</thinking>'
+        # (LiteLLM's '_parse_content_for_reasoning' recognises and re-pads it).
+        # Strip the delimiters up front so folding never produces the malformed
+        # double-wrapped '<thinking><thinking>…</thinking></thinking>' block that
+        # can confuse DeepSeek/Ollama into swallowing all output (empty STOP).
+        reasoning_str = str(reasoning).strip()
+        if reasoning_str.startswith("<thinking>"):
+            reasoning_str = reasoning_str[len("<thinking>") :]
+        if reasoning_str.endswith("</thinking>"):
+            reasoning_str = reasoning_str[: -len("</thinking>")]
+        reasoning_str = reasoning_str.strip()
+
+        # If the content already carries the folded thinking block, leave the
+        # message untouched rather than re-folding (idempotent across resends).
+        if f"<thinking>{reasoning_str}</thinking>" in content:
+            out.append(m)
+            continue
+
+        folded = f"<thinking>{reasoning_str}</thinking>{content}"
         if isinstance(m, dict):
             new_m = dict(m)
             new_m["content"] = folded
@@ -1570,7 +1588,17 @@ def get_llm_kwargs(
     if _key:
         llm_kwargs["api_key"] = _key
 
-    if effort:
+    # CRITICAL (INV empty-turn): Do NOT forward reasoning_effort on the NATIVE
+    # Ollama completion provider. LiteLLM's native Ollama transformer maps
+    # reasoning_effort to a boolean `think` flag (think=True for low/medium/high
+    # on non-'gpt-oss' models). Forcing think=True on DeepSeek/Ollama is the
+    # documented trigger for the model swallowing all output and returning an
+    # empty STOP turn (MODEL_RETURNED_NO_CONTENT), which is what aborts the
+    # campaign. VSCode talks to Ollama over the OpenAI-compatible endpoint and
+    # never hits this mapping. Only emit reasoning_effort for non-native paths
+    # (openai/<m>, ollama.cloud/ -> rewritten to openai/<m>, anthropic/, ...).
+    raw_is_native_ollama = resolved_model.startswith("ollama/")
+    if effort and not raw_is_native_ollama:
         llm_kwargs["reasoning_effort"] = str(effort).lower().strip()
     if raw_timeout is not None:
         try:

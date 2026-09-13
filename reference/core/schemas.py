@@ -296,7 +296,10 @@ class ExploitChain(BaseModel):
 class ExecutiveReport(BaseModel):
     """Final executive review packet compiled by /mantis-report."""
     model_config = ConfigDict(extra="ignore")
-    executive_summary: str = Field(description='High level executive summary of findings and risk posture')
+    executive_summary: str = Field(
+        default="",
+        description='High level executive summary of findings and risk posture',
+    )
     critical_findings_count: int = Field(default=0, description='Total critical findings recorded')
     recommendations: List[str] = Field(default_factory=list, description='Prioritized remediation actions')
 

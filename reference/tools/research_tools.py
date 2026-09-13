@@ -674,7 +674,20 @@ def generate_report(report: dict) -> str:
     if ctx is None:
         return "Error: No active execution context."
     try:
-        rpt_obj = ExecutiveReport.model_validate(report) if isinstance(report, dict) else report
+        if isinstance(report, dict):
+            # Tolerate an omitted executive_summary (the model may stream a
+            # structured tool payload without it). Defaulting the field here
+            # prevents a Pydantic ValidationError from bouncing the request back
+            # into the tool loop and stalling the reporter.
+            payload = dict(report)
+            if not payload.get("executive_summary"):
+                payload["executive_summary"] = (
+                    payload.get("summary")
+                    or "Security review completed. No executive summary provided."
+                )
+            rpt_obj = ExecutiveReport.model_validate(payload)
+        else:
+            rpt_obj = ExecutiveReport.model_validate(report)
         content_json = rpt_obj.model_dump_json(indent=2)
         _persist_artifact(ctx, "report", "workspace/.structured/report.json", content_json)
         return f"SUCCESS: Generated executive report with {len(rpt_obj.recommendations)} recommendation(s)."
