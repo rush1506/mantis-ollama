@@ -6,9 +6,11 @@ top of the **Agent Development Kit (ADK)** using the full suite of canonical
 
 ## Getting Started
 
-First, install python3-venv such as with `sudo apt install python3-venv`, then
-run the install script. Mantis comes with automated configuration and launcher
-tools (`mantis-configure` and `mantis-launch`):
+The reference harness defaults to **DeepSeek** (`ollama/deepseek-v4-flash:cloud`)
+via Ollama Cloud. First, install python3-venv such as with
+`sudo apt install python3-venv`, then run the install script. Mantis comes with
+automated configuration and launcher tools (`mantis-configure` and
+`mantis-launch`):
 
 ```bash
 cd reference && ./install.sh
@@ -16,13 +18,13 @@ cd reference && ./install.sh
 # 0. Provide credentials for hosted/cloud models (git-ignored .env). Copy the
 #    template and fill in OLLAMA_API_KEY (and/or OPENAI_API_KEY, ANTHROPIC_API_KEY):
 #    cp .env.example .env
-#    Start a local Ollama daemon and pull the default model, OR point to any
-#    OpenAI-compatible endpoint. Local Ollama needs no cloud credentials:
+#    For local-only setups, start the Ollama daemon and pull a downloadable
+#    DeepSeek model instead (no cloud credentials):
 ollama serve &                    # local daemon (default http://localhost:11434/v1)
-ollama pull deepseek-v4-flash:cloud     # default model
+ollama pull deepseek-v4-flash     # local (non-cloud) build of the default model
 
-#    Ollama Cloud (hosted, OpenAI-compatible):
-#    export LLM_API_BASE="https://ollama.com/v1"
+#    Ollama Cloud (hosted): requires OLLAMA_API_KEY (see .env.example). The
+#    `:cloud` model auto-routes to https://ollama.com.
 
 # 1. Fast Configuration & Capability Auto-Detection (or --interactive wizard)
 python3 scripts/configure.py --auto

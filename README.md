@@ -17,41 +17,116 @@
 Mantis is a set of skills along with an ADK reference harness for building
 secure software in the new AI era of software development.
 
-## Getting Started
+## Quick Start (Ollama Cloud — DeepSeek)
 
-First, install python3-venv such as with `sudo apt install python3-venv`, then
-run the install script. Mantis comes with automated configuration and launcher
-tools (`mantis-configure` and `mantis-launch`):
+The default model is **DeepSeek** (`ollama/deepseek-v4-flash:cloud`). This guide
+gets Mantis running against **Ollama Cloud** so you can use hosted DeepSeek models
+with no GPU and no local daemon. To run entirely locally instead, see
+[Getting Started (Local)](#getting-started-local).
+
+### 1. Prerequisites
+
+- Python 3.10+ and `python3-venv`
+- An **Ollama Cloud** account and API key from
+  <https://ollama.com/settings/keys>
+- (Recommended) the `ollama` CLI, to test connectivity: `ollama login`
+
+### 2. Install the reference harness
+
+```bash
+cd reference && ./install.sh
+```
+
+### 3. Provide your API key (never committed)
+
+Mantis loads credentials from a git-ignored `.env` file. Copy the template and
+fill in your key:
+
+```bash
+cp reference/.env.example reference/.env
+# edit reference/.env
+#   OLLAMA_API_KEY=your-ollama-cloud-key
+```
+
+> Existing shell environment variables always win over `.env`, so you can also
+> run `export OLLAMA_API_KEY=your-key` instead.
+
+### 4. Verify the model routes to Ollama Cloud
+
+The default model `ollama/deepseek-v4-flash:cloud` is auto-routed to
+`https://ollama.com` (the Ollama-native `:cloud` endpoint). Confirm with a live
+probe after configuration (step 5) — the preflight `--probe` flag will verify
+credentials and reachability.
+
+### 5. Configure and preflight
+
+```bash
+cd reference && source .venv/bin/activate
+
+# Fast config & capability auto-detection (uses deepseek-v4-flash:cloud by default)
+python3 scripts/configure.py --auto
+
+# Preflight validation + live reachability probe (verifies your API key)
+python3 scripts/configure.py --test --probe
+```
+
+If the probe reports `Unauthorized`, double-check the `OLLAMA_API_KEY` in your
+`.env` / shell and rerun.
+
+### 6. Launch a review campaign
+
+```bash
+# From reference/
+./run.sh /path/to/target           # a source file or a repository directory
+
+# Optional: target a specific objective
+./run.sh /path/to/target --objective "Audit for Server-Side Request Forgery and SSRF in webhook handlers"
+```
+
+### Changing the model
+
+To use a different DeepSeek model (e.g. `deepseek-v4-pro`), or any other model,
+set it on the command line or in `workflow.json`:
+
+```bash
+./run.sh . --model ollama/deepseek-v4-pro:cloud
+```
+
+> **Routing refresher:** `ollama/<m>:cloud` → native Ollama Cloud endpoint
+> `https://ollama.com`; `ollama.cloud/<m>` → OpenAI-compatible endpoint
+> `https://ollama.com/v1`; a plain `ollama/<m>` (no `:cloud`) → your **local**
+> Ollama daemon (`http://localhost:11434/v1`), which needs a downloaded model.
+
+---
+
+## Getting Started (Local)
+
+Prefer an entirely local setup with no cloud account? First, install
+python3-venv such as with `sudo apt install python3-venv`, then run the install
+script. Mantis comes with automated configuration and launcher tools
+(`mantis-configure` and `mantis-launch`):
 
 ```bash
 cd reference && ./install.sh
 
-# Login first if you use Ollama cloud
-# Optional
-ollama login
+# Start a local Ollama daemon and pull a real, downloadable DeepSeek model.
+# (Local Ollama needs no cloud credentials.)
+ollama serve &
+ollama pull deepseek-v4-flash      # local (non-cloud) build of the default model
 
-# 0. Provide credentials for hosted/cloud models (git-ignored .env). Copy the
-#    template and fill in OLLAMA_API_KEY (and/or OPENAI_API_KEY, ANTHROPIC_API_KEY):
-#    cp reference/.env.example reference/.env
+# Fast Configuration & Capability Auto-Detection
+python3 scripts/configure.py --auto --model ollama/deepseek-v4-flash
 
-# 1. Start a local Ollama daemon and pull the default model, OR point to any
-#    OpenAI-compatible endpoint (e.g. Ollama Cloud at https://ollama.com/v1).
-ollama serve && ollama pull deepseek-v4-flash:cloud
-
-# 1. Fast Configuration & Capability Auto-Detection (or --interactive wizard)
-python3 scripts/configure.py --auto
-
-# 2. Fast Preflight Validation (~1s) & Live Reachability Probe
+# Fast Preflight Validation + Live Reachability Probe
 python3 scripts/configure.py --test --probe
 
-# 3. Launch Vulnerability Review Campaign (file or repository)
-./run.sh path/to/code            # a file or a directory
+# Launch Vulnerability Review Campaign (file or repository)
+./run.sh path/to/code              # a file or a directory
 
-# 4. (Optional) Run Research Graph Synthesis for a Specific Objective
+# (Optional) Research Graph Synthesis for a Specific Objective
 ./run.sh path/to/code --objective "Audit for Server-Side Request Forgery and SSRF in webhook handlers"
 ```
 
-## Overview of Mantis
 
 Mantis is roughly designed to:
 
