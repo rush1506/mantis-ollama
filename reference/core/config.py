@@ -1513,6 +1513,17 @@ def get_llm_kwargs(
     raw_is_ollama_cloud_openai = raw_model.strip().startswith(OLLAMA_CLOUD_PREFIX)
     resolved_model = normalize_model_id(raw_model)
 
+    # EMPTY-TURN FIX: route ':cloud' models through the OpenAI-compatible /v1
+    # provider (exactly as VSCode talks to Ollama Cloud) instead of the native
+    # '/api/generate' provider. The native path can return thinking-only output
+    # with empty content -> finish_reason=STOP and no parts (empty turn failure
+    # that aborts the campaign). The openai/ rewrite hits /chat/completions,
+    # which returns content reliably. We rewrite only the actual request model
+    # here (normalize_model_id stays canonical for security gates); ollama.cloud/
+    # already rewrote here via normalize_model_id.
+    if resolved_model.startswith("ollama/") and (":cloud" in resolved_model):
+        resolved_model = resolved_model.replace("ollama/", "openai/", 1)
+
     # config (global config dict, e.g. from workflow.json) may carry an api_base.
     config_api_base = None
     if config and isinstance(config, dict):
@@ -1533,12 +1544,12 @@ def get_llm_kwargs(
     resolved_api_base = api_base or config_api_base or os.environ.get("LLM_API_BASE") or default_api_base
     if not resolved_api_base:
         if raw_is_ollama_cloud:
-            # ollama.cloud/* flows via the OpenAI provider (appends /chat/completions)
-            # -> /v1 base. :cloud suffix flows via the native Ollama provider
-            # (appends /api/generate) -> no /v1 base.
-            resolved_api_base = (
-                OLLAMA_CLOUD_OPENAI_BASE if raw_is_ollama_cloud_openai else OLLAMA_CLOUD_API_BASE
-            )
+            # ':cloud' and 'ollama.cloud/*' now flow through the OpenAI provider
+            # (resolved_model == openai/<m>), which appends /chat/completions
+            # -> use the /v1 base. Native '/api/generate' would need the bare
+            # host, but we deliberately avoid the native provider for ':cloud'
+            # models to prevent empty/thinking-only STOP turns.
+            resolved_api_base = OLLAMA_CLOUD_OPENAI_BASE
         elif resolved_model.startswith("ollama/"):
             resolved_api_base = DEFAULT_API_BASE
 
